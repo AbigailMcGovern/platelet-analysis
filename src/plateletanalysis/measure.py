@@ -5,13 +5,21 @@ from sklearn.cluster import DBSCAN
 from sklearn import metrics
 from scipy import ndimage
 
+from . import config as cfg
+import sys
+from pathlib import Path
+from IPython.display import clear_output  
+import pingouin as pg
+import os
+import time
+import math as m
 
 
 # -------------------
 # Spatial Derivatives
 # -------------------
 
-def discreet_difference_derivatives(df):
+def finite_difference_derivatives(df):
     dv_=[]
     p_grp=df.groupby(['path', 'particle'])
     for i, gr in p_grp:
@@ -286,3 +294,19 @@ def length_entropy(df, track_no_frames=None, particle_id='particle'):
         }
         entropy_df = pd.DataFrame(entropy_df)
         return entropy_df
+
+
+# -----------
+# Contraction
+# -----------
+
+def contraction(pc):
+    cont_grp=pc.reset_index().groupby(['path']).apply(contract)
+    cont_grp=cont_grp.set_index('pid').sort_index()
+
+
+def contract(t2):
+    t2['cont']=((-t2['xs'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['xs'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
+    t2['cont_p']=t2.cont/t2.dv
+    return pd.DataFrame({'cont' : (t2['cont']), 'cont_p' : (t2['cont_p']), 'pid':t2['pid']})
+

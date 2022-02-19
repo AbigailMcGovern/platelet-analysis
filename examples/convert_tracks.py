@@ -1,5 +1,5 @@
 from plateletanalysis.io import get_experiment_df, add_info_from_file_name
-from plateletanalysis.measure import discreet_difference_derivatives,\
+from plateletanalysis.measure import finite_difference_derivatives,\
     nearest_neighbours_average, stability
 from plateletanalysis.transform import z_floor
 
@@ -16,7 +16,7 @@ C2aKD_df.to_parquet(save)
 print('saved checkpoint: added info from file names')
 
 # discreet spatial difference derivatives (approximation for velocity)
-C2aKD_df = discreet_difference_derivatives(C2aKD_df)
+C2aKD_df = finite_difference_derivatives(C2aKD_df)
 C2aKD_df.to_parquet(save)
 print('saved checkpoint: added derivatives')
 
