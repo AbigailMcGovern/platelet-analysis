@@ -9,7 +9,7 @@ from . import config as cfg
 import sys
 from pathlib import Path
 from IPython.display import clear_output  
-import pingouin as pg
+#import pingouin as pg
 import os
 import time
 import math as m

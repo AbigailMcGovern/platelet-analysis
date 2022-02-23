@@ -75,6 +75,7 @@ def get_experiment_df(
 
 
 def add_info_from_file_name(
+    # this needs altering - check word doc
     df,
     vars=('date', 'mouse', 'inj', 'inh', 'Tx', 'exp'), 
     positions = (0, 1, 2, 3, 4),
