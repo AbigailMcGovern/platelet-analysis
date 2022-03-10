@@ -36,10 +36,23 @@ For each video for which tracks are found there should be an accompanying metada
 
 ### Collated data files
 These are the data files that should be used for generating analyses using the menu interface (format: parquet). Using functions supplied in `plateletanalysis` you can generate one of these files (currently there are an incomplete examples of this in the `examples` directory - the files ending `_df.py`). Generally we keep one data frame per experimental condition. That is, there is one data frame per inhibitor or control. The names of the data frames that will appear as options in the analysis are specified in the `plateletanalysis.config` module (with will eventually be reconfigured and renamed). The path at which to find the data frame is located in the `data` directory in `file_paths.csv`. 
+Variables include:
+- `pid` –
+- `path` – 
+- `x_s` – 
+- `ys` – 
+- `zs` – 
+- ... TBC
 
 
 ## Running the analysis
 The user interface-based analysis can be run by calling `plateletanalysis.run_analysis`. Before running the analysis Please ensure `file_paths.csv` is properly to include the locations of (1) the directory containing collated data files, (2) the max calcium quadratic analysis regression, (3) the min calcium quadratic analysis regression, (4) the paraview files if necessary, and (5) the data containing any outliers to be excluded. 
+
+```Python
+from plateletanalysis import run_analysis
+
+run_analysis.show(run=True)
+```
 
 
 ## Roadmap
