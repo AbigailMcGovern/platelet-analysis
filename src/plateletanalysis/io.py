@@ -2,34 +2,35 @@ import pandas as pd
 import os
 from pathlib import Path
 import re
+import numpy as np
 
 
-df_dict={'pid':'pid',
-         'path':'file',
-         'frame':'t',
-         'xs':'ys',
-         'ys':'xs',
-         'zs':'zs',
-         'particle':'particle',
-         'nrtracks':'track_no_frames',
-         'c0_mean':'GaAsP Alexa 488: mean_intensity',
-         'c0_max':'GaAsP Alexa 488: max_intensity',
-         'c1_mean':'GaAsP Alexa 568: mean_intensity',
-         'c1_max':'GaAsP Alexa 568: max_intensity',
-         'c2_mean':'Alxa 647: mean_intensity',
-         'c2_max':'Alxa 647: max_intensity',
-         
-             'vol':'volume',
-             'elong':'elongation',
-             'flatness':'flatness',
-         
-             'treatment':'treatment',
-             'cohort':'cohort',
-         
-             'eigval_0':'inertia_tensor_eigvals-0',
-             'eigval_1':'inertia_tensor_eigvals-1',
-             'eigval_2':'inertia_tensor_eigvals-2',
-            }
+
+df_dict={
+    'pid':'pid',
+    'path':'file',
+    'frame':'t',
+    'x_s':'ys',
+    'ys':'xs',
+    'zs':'zs',
+    'particle':'particle',
+    'nrtracks':'track_no_frames',
+    'c0_mean':'GaAsP Alexa 488: mean_intensity',
+    'c0_max':'GaAsP Alexa 488: max_intensity',
+    'c1_mean':'GaAsP Alexa 568: mean_intensity',
+    'c1_max':'GaAsP Alexa 568: max_intensity',
+    'c2_mean':'Alxa 647: mean_intensity',
+    'c2_max':'Alxa 647: max_intensity',
+    'vol':'volume',
+    'elong':'elongation',
+    'flatness':'flatness',
+    'treatment':'treatment',
+    'cohort':'cohort',
+    'eigval_0':'inertia_tensor_eigvals-0',
+    'eigval_1':'inertia_tensor_eigvals-1',
+    'eigval_2':'inertia_tensor_eigvals-2',
+    }
+
 
 
 def get_experiment_df(
@@ -75,27 +76,51 @@ def get_experiment_df(
 
 
 def add_info_from_file_name(
-    # this needs altering - check word doc
     df,
-    vars=('date', 'mouse', 'inj', 'inh', 'Tx', 'exp'), 
+    var=('date', 'mouse', 'inj', 'inh', 'exp'), 
     positions = (0, 1, 2, 3, 4),
-    path_col='file'
+    types=(str, np.int64, np.int64, str, str),
+    dec_to_str = (False, False, False, False, True),
+    path_col='path'
     ):
-    digits = re.compile(r'\d*')
+    for v in var:
+        df['v'] = [None, ] * len(df)
     for p in pd.unique(df[path_col]):
-        f = Path(p).stem
-        terms = f.split('_')
-        for v, pos in zip(vars, positions):
-            s = terms[pos]
-            match = digits.findall(s)
-            if match is not None:
-                info = match[0]
-            else:
-                info = s
-            df.loc[(df[path_col]==p), v] = info
+        result = split_and_find(p, positions, var, types, dec_to_str)
+        idxs = df[df[path_col] == p].index.values
+        for v in result.keys():
+            df.loc[idxs, v] = result[v]
+    for v, t in zip(var, types):
+        df[v] = df[v].astype(t)
     return df
 
+# C2aKD --> date mouse inh inj exp (0, 1, 3, 2, 4)
 # 201125_IVMTR83_Inj11_CMFDA_DMSO_exp3.nd2
+
+def split_and_find(s, idxs, var, types, dec_2_s):
+    l = s.split('_')
+    res = {}
+    digits = re.compile(r'\d+')
+    for i, v, t, d2s in zip(idxs, var, types, dec_2_s):
+        part = l[i]
+        match = digits.findall(part)
+        get_dec = t in (np.int64, np.int32, int, np.float64) or d2s
+        if get_dec and len(match) > 0:
+            info = match[0]
+            if not d2s:
+                info = int(info)
+        else:
+            info = part
+        res[v] = info
+    return res
+
+
+def fix_names(s: str):
+    new = s.replace(' ', '')
+    new = new.replace('-', '')
+    return new
+
+# df['path'] = df['path'].apply(fix_names)
 
 
 # -------

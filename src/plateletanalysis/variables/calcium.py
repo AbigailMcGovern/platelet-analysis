@@ -1,7 +1,7 @@
 from scipy.signal import find_peaks
 import numpy as np
 import pandas as pd
-from . import config as cfg
+from .. import config as cfg
 
 # Global parameters for calcium analysis
 #----------------------------------------------------------------------
@@ -13,7 +13,7 @@ calc_var='ca_corr'
 # New calcium variables
 #----------------------------------------------------------------------
 
-def correct_calcium(df):
+def corrected_calcium(df):
     z=df.zs
     c=df.c0_mean
     try:

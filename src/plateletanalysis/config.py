@@ -11,27 +11,8 @@ DIR_PATH = os.path.join(os.path.dirname(__file__), 'data')
 #---------------------------------------------------------------------------
 #df_path = Dataframe specifyting paths for files stored on computer
 #----------------------------------------------------------------------
-df_paths  = {
-    'name' : [
-        'df_parquet', 
-        'max_calc', 
-        'min_calc', 
-        'paraview'
-    ], 
-    'description' : [
-        'path to folder containing dataframes in format parquet', 
-        'path to file with regression results for max calc', 
-        'path to file with regression results for min calc', 
-        'path to folder for paraview'
-    ], 
-    'path' : [
-        '',
-        os.path.join(DIR_PATH, 'df_reg zz max_calc.csv'), 
-        os.path.join(DIR_PATH, 'df_reg zz max_calc.csv'), 
-        '', 
-    ]
-}
-df_paths = pd.DataFrame(df_paths)
+df_paths  = os.path.join(DIR_PATH, 'file_paths.csv')
+df_paths = pd.read_csv(df_paths)
 #df_paths=pd.read_csv('file_paths.csv')
 #df_paths=pd.read_csv('file_paths - laptop.csv')
 #---------------------------------------------------------------------------
@@ -58,13 +39,13 @@ shortnames_ =['_biva_','_cang_','_cmfda_','_ctrl_',
                 '_mips_','_saline_','_sq_','_veh-mips_',
                 '_veh-sq_','_par4+-_','_par4-+_','_par4--biva_',
                  '_par4--_','_asa-veh_','_asa_', '_salgav-veh_',
-                 '_salgav_'
+                 '_salgav_','_c2actrl_','_c2akd_',
                ]
 longnames_ =['Bivalirudin','Cangrelor','CMFDA','Control',
                  'MIPS','Saline','SQ','Vehicle MIPS',
                  'Vehicle SQ','PAR4+/-','PAR4-/+','PAR4-/- + biva',
                  'PAR4-/-','ASA + Vehicle','ASA','Salgav + Vehicle',
-                 'Salgav'
+                 'Salgav','C2alpha+','C2alpha-'
                 ]
 
 expseries_listnames=['Saline cohort','Thromin-PAR4 cohort','MIPS cohort','ASA cohort','SQ cohort','CMFDA cohort',
@@ -73,6 +54,7 @@ treatments_=[saline_,PAR4_,MIPS_,ASA_,SQ_,CMFDA_,All_,simple_]
 #treatments_dic=dict(saline_,PAR4_,MIPS_,ASA_,SQ_,CMFDA_,All_,simple_)
 shorttolong_dic = dict(zip(shortnames_, longnames_))
 longtoshort_dic = dict(zip(longnames_,shortnames_))
+
 
 #---------------------------------------------------------------------------
 #Lists of variables for certain applications

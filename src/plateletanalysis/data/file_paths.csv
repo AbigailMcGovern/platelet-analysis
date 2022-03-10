@@ -1,0 +1,6 @@
+name,description,path
+df_parquet,path to folder containing dataframes in format parquet,/Users/amcg0011/Data/platelet-analysis/dataframes
+max_calc,path to file with regression results for max calc,/Users/amcg0011/GitRepos/platelet-analysis/src/plateletanalysis/data/df_reg zz max_calc.csv
+min_calc,path to file with regression results for min calc,/Users/amcg0011/GitRepos/platelet-analysis/src/plateletanalysis/data/df_reg zz min_calc.csv
+paraview,path to folder for paraview,
+outliers,path to file with outliers,/Users/amcg0011/GitRepos/platelet-analysis/src/plateletanalysis/data/df_outliers.csv

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import math as m
-from . import config as cfg
+from .. import config as cfg
 
 # --------------------------
 # Add Variables to DataFrame
@@ -21,10 +21,12 @@ def add_basic_variables(df):
     - zz
     - position
     - inside_injury
+    - tracked
     - mov_class
     - movement
     - exp_id
     - inh_exp_id
+    - tracknr
     '''
     df = led_bins_var(df)
     df = dist_c_var(df)
@@ -36,10 +38,12 @@ def add_basic_variables(df):
     df = zz_var(df)
     df = position_var(df)
     df = inside_injury_var(df)
-    # need to add tracked variable 
+    df = tracked_variable(df)
+    df = add_tot_variables(df)
+    df = new_exp_ids(df)
     df = mov_class_var(df)
     df = movement_var(df)
-    df = new_exp_ids(df)
+    df = tracknr_variable(df)
     return df
 
 
@@ -152,15 +156,15 @@ def inside_injury_var(df):
 def mov_class_var(df):#New definition 191209
     for exp_id in pd.unique(df.exp_id):
         dfi=df[df.exp_id==exp_id].copy()
-    try:
-        still=pd.unique(dfi[((dfi.displ_tot/dfi.nrtracks)<0.1)&(dfi.displ_tot<4)].particle)
-        loose=pd.unique(dfi[(dfi.displ_tot>5)&((dfi.cont_tot/dfi.displ_tot)<0.2)].particle)
-        contractile=pd.unique(dfi[((dfi.cont_tot/dfi.displ_tot)>0.5)&(dfi.displ_tot>1)].particle)
-    except TypeError:
-        print(exp_id,dfi.displ_tot.dtypes,dfi.nrtracks.dtypes,(dfi.displ_tot/dfi.nrtracks))
-    df.loc[(df.exp_id==exp_id)&(df['particle'].isin(still)),'mov_class']="still"
-    df.loc[(df.exp_id==exp_id)&(df['particle'].isin(loose)),'mov_class']="loose"
-    df.loc[(df.exp_id==exp_id)&(df['particle'].isin(contractile)),'mov_class']="contractile"
+        try:
+            still = pd.unique(dfi[((dfi.displ_tot/dfi.nrtracks)<0.1) & (dfi.displ_tot<4)]['particle'])
+            loose = pd.unique(dfi[(dfi.displ_tot>5) & ((dfi.cont_tot/dfi.displ_tot)<0.2)]['particle'])
+            contractile = pd.unique(dfi[((dfi.cont_tot/dfi.displ_tot)>0.5) & (dfi.displ_tot>1)]['particle'])
+        except TypeError:
+            print(exp_id,dfi.displ_tot.dtypes,dfi.nrtracks.dtypes,(dfi.displ_tot/dfi.nrtracks))
+        df.loc[(df.exp_id==exp_id) & (df['particle'].isin(still)),'mov_class']="still"
+        df.loc[(df.exp_id==exp_id) & (df['particle'].isin(loose)),'mov_class']="loose"
+        df.loc[(df.exp_id==exp_id) & (df['particle'].isin(contractile)),'mov_class']="contractile"
     return df
 
 
@@ -247,3 +251,47 @@ def inh_names_2lines(df):
         'salgavDMSO':'salgav\nDMSO', 
         'vehicle sq':'vehicle\nsq', 
         'par4--biva':'par4--\nbiva'}
+
+
+def add_tot_variables(pc1):
+    #Satter index pa path och particle for att kunna konkaternera dataframe senare
+    particle = pc1['particle']
+    path = pc1['path']
+    pc1=pc1.reset_index().set_index(['path','particle'])
+    #Grupperar data pa path och partikel for att kunna analysera olika partiklar for sig
+    grouped=pc1.groupby(['path','particle'])
+    #Raknar antalet observationer for varje unik partikel
+    counted=grouped.count()
+    #Variabeln nrtracks kollar hur manga tracks en viss partikel ar trackad
+    #pc1['nrtracks']=counted.frame
+    #Adderar de olika variablerna och beraknar summan av alla observationer
+    summed=grouped.sum()
+    #cont_tot summerar den totala kontraktionen for en partikel
+    pc1['cont_tot']=summed.cont
+    # displ_tot summerar den totala forflyttningen for en partikel
+    pc1['displ_tot']=abs(summed.dvx)+abs(summed.dvy)
+    # dvz_tot summerar den totala forflyttningen i z-led for en partikel
+    pc1['dvz_tot']=summed.dvz
+    # dvz_tot summerar den totala forflyttningen i y-led for en partikel
+    pc1['dvy_tot']=summed.dvy
+    pc1 = pc1.reset_index()
+    pc1['particle'] = particle
+    pc1['path'] = path
+    return pc1
+
+
+def tracknr_variable(pc):
+    try:
+        pc = pc.drop(['level_0'], axis=1)
+    except:
+        pass
+    pc = pc.reset_index()
+    # Tracknr raknar vilken trackning i ordningen en viss observation ar
+    tracknr=pc.groupby(['path','particle'])['frame'].rank()
+    pc['tracknr']=tracknr
+    return pc
+
+
+def tracked_variable(df):
+    df['tracked'] = df['nrtracks'] > 1
+    return df

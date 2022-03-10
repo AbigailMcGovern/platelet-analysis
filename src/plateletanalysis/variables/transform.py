@@ -13,7 +13,7 @@ def adjust_coordinates(
     roi_x_col='roi_x', 
     roi_y_col='roi_y', 
     path_col='path', 
-    xs_col='xs', 
+    xs_col='x_s', 
     ys_col='ys',
     zs_col='zs',
     px_microns_col=None, 

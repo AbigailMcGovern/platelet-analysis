@@ -2,42 +2,64 @@ import numpy as np
 import pandas as pd
 from scipy import spatial
 from sklearn.cluster import DBSCAN
-from sklearn import metrics
+#from sklearn import metrics
 from scipy import ndimage
+from tqdm import tqdm
 
-from . import config as cfg
-import sys
-from pathlib import Path
-from IPython.display import clear_output  
-#import pingouin as pg
-import os
-import time
-import math as m
+
+
+# -------------------
+# Current Mesurements
+# -------------------
+
+def platelet_measurments(df):
+    # add velocity
+    df = finite_difference_derivatives(df)
+    # add neighbour distance
+    df = neighbour_distance(df)
+
 
 
 # -------------------
 # Spatial Derivatives
-# -------------------
+# ------------------- 
 
 def finite_difference_derivatives(df):
-    dv_=[]
-    p_grp=df.groupby(['path', 'particle'])
-    for i, gr in p_grp:
-        grp=gr.sort_values('frame')
-        dvx = np.append(np.diff(grp['xs']), np.nan)
-        dvy = np.append(np.diff(grp['ys']), np.nan)
-        dvz = np.append(np.diff(grp['zs']), np.nan)
-        df=grp.pid.to_frame()
-        df['dvx']=dvx
-        df['dvy']=dvy
-        df['dvz']=dvz
-        df['particle']=grp.particle
-        dv_.append(df)
-    dv=pd.concat(dv_, axis=0)
-    dv=dv.sort_values('pid')
-    dv['dv']=(dv.dvx**2+dv.dvy**2+dv.dvz**2)**0.5
-    tracks_grp=dv.sort_values('pid').reset_index()
-    tracks_grp=tracks_grp[['pid', 'dvx', 'dvy', 'dvz', 'dv', 'particle']].set_index('pid')
+    df = df.sort_values('pid').reset_index()
+    dv_df = {
+        'dvx' : np.array([np.nan, ] * len(df)).astype(np.float64),
+        'dvy' : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        'dvz' : np.array([np.nan, ] * len(df)).astype(np.float64),  
+        'pid' : df.index.values
+    }
+    files = pd.unique(df['path'])
+    for f in files:
+        img_df = df[df['path'] == f]
+        platelets = pd.unique(img_df['particle'])
+        n_iter = len(platelets)
+        with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
+            for p in platelets:
+                p_df = img_df[img_df['particle'] == p]
+                p_df = p_df.sort_values('frame')
+                idxs = p_df.index.values
+                dvx = np.append(np.diff(p_df['x_s']), np.nan)
+                dvy = np.append(np.diff(p_df['ys']), np.nan)
+                dvz = np.append(np.diff(p_df['zs']), np.nan)
+                dv_df['dvx'][idxs] = dvx
+                dv_df['dvy'][idxs] = dvy
+                dv_df['dvz'][idxs] = dvz
+                progress.update(1)
+    dv_df = pd.DataFrame(dv_df)
+    dv_df.reset_index(drop=True)
+    df = pd.concat([df, dv_df], axis=1)
+    df['dv']=(df.dvx**2+df.dvy**2+df.dvz**2)**0.5
+    df = df.drop(['pid'], axis=1)
+    df['pid'] = range(len(df))
+    try:
+        df = df.drop(['level_0'], axis=1)
+    except:
+        pass
+    return df
 
 
 def fourier_derivatives(df):
@@ -47,11 +69,12 @@ def fourier_derivatives(df):
 
 
 # ------------------
-# Nearest Neighbours
+# Neighbour Distance
 # ------------------
 
-def nearest_neighbours(pc):
-    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours).reset_index()
+def neighbour_distance(pc):
+    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours)
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1)
     return t_grp
 
 
@@ -62,7 +85,7 @@ def _nearest_neighbours(pc):
     #print(len(pc))
     p1i=pc.reset_index().pid
     if len(pc)>nb_count:
-        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['xs','ys','zs']].values))
+        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
         dmap_sorted=np.sort(dmap, axis=0)
         dmap_idx_sorted=np.argsort(dmap, axis=0)
         for i in range(nb_count):
@@ -80,9 +103,10 @@ def _nearest_neighbours(pc):
     return df
 
 
-def nearest_neighbours_average(pc):
-    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours_average).reset_index()
-    return t_grp
+def average_neighbour_distance(pc):
+    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours_average)
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()
+    return pc
 
 
 def _nearest_neighbours_average(pc):
@@ -94,7 +118,7 @@ def _nearest_neighbours_average(pc):
     p1i=pc.reset_index().pid
     if len(pc)>np.array(nba_list).max():
         
-        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['xs','ys','zs']].values))
+        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
         dmap_sorted=np.sort(dmap, axis=0)
         #dmap_idx_sorted=np.argsort(dmap, axis=0)
         for i in nba_list:
@@ -123,7 +147,7 @@ def DBSCAN_cluster_1(pc):
     min_samples=5
     eps_list=[5,7.5,10,15,20]
     cl_=[]
-    X=pc[['xs','ys','zs']].values # 3D
+    X=pc[['x_s','ys','zs']].values # 3D
     for eps in eps_list:
         # Compute DBSCAN
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -141,7 +165,7 @@ def DBSCAN_cluster_2(pc):
     min_samples=5
     eps_list=np.arange(3, 31, 2)
     cl_=[]
-    X=pc[['xs','ys','zs']].values # 3D
+    X=pc[['x_s','ys','zs']].values # 3D
     for eps in eps_list:
         # Compute DBSCAN
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
@@ -166,14 +190,15 @@ def DBSCAN_cluster_2(pc):
 
 def stability(pc):
     t_grp = pc.groupby(['path']).apply(do_tstab)
-    return t_grp
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()
+    return pc
 
 
 def do_tstab(tgrp):
     ocp_=[]
     first=True
     for i, grp in tgrp.groupby(['frame']):
-        pos=grp[['xs','ys','zs']].values
+        pos=grp[['x_s','ys','zs']].values
         if first:
             first=False
         else:
@@ -195,14 +220,26 @@ def do_tstab(tgrp):
 # Point Depth
 # -----------
 
-def point_depth_1(pc, pos):
+
+def point_depth(pc):
+    t_grp = pc.groupby(['path']).apply(point_depth_2).reset_index() 
+    t_grp = t_grp.drop(['path'], axis=1)
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()  
+    try:
+        pc = pc.drop(['level_1'], axis=1)
+    except:
+        pass
+    return pc
+
+
+def point_depth_1(pos):
     fill_dist=15
-    pos_max=pos[['xs', 'ys', 'zf']].max()
+    pos_max=pos[['x_s', 'ys', 'zf']].max()
     zsize=int(pos_max['zf']*1.5)
-    xsize=int(pos_max['xs']*1.1)
+    xsize=int(pos_max['x_s']*1.1)
     ysize=int(pos_max['ys']*1.1)
     pcc=np.zeros((xsize+2,ysize+2,zsize+2))
-    pc_pos=pos[['xs', 'ys', 'zf']].values
+    pc_pos=pos[['x_s', 'ys', 'zf']].values
     zfloor=1
     pc_pos[pc_pos<0]=0
     pc_pos=pc_pos.astype('int').T
@@ -219,16 +256,16 @@ def point_depth_1(pc, pos):
     return depth_grp
 
 
-def point_depth_2(pc, pos_grp):
+def point_depth_2(pos_grp):
     fill_dist=15
-    pos_max=pos_grp[['xs', 'ys', 'zf']].max()
+    pos_max=pos_grp[['x_s', 'ys', 'zf']].max()
     zsize=int(pos_max['zf']*1.5)
-    xsize=int(pos_max['xs']*1.1)
+    xsize=int(pos_max['x_s']*1.1)
     ysize=int(pos_max['ys']*1.1)
     depth_grp_=[]
     for i, pos in pos_grp.groupby('frame'):
         pcc=np.zeros((xsize+2,ysize+2,zsize+2))
-        pc_pos=pos[['xs', 'ys', 'zf']].values
+        pc_pos=pos[['x_s', 'ys', 'zf']].values
         zfloor=1
         pc_pos[pc_pos<0]=0
         pc_pos=pc_pos.astype('int').T
@@ -300,13 +337,21 @@ def length_entropy(df, track_no_frames=None, particle_id='particle'):
 # Contraction
 # -----------
 
-def contraction(pc):
-    cont_grp=pc.reset_index().groupby(['path']).apply(contract)
-    cont_grp=cont_grp.set_index('pid').sort_index()
+def contractile_motion(pc):
+    cont_grp = pc.reset_index().groupby(['path']).apply(contract)
+    cont_grp = cont_grp.set_index('pid').sort_index()
+    cont_grp = cont_grp.reset_index()
+    pc = pc.reset_index()
+    pc = pd.concat([pc.set_index('pid'), cont_grp.set_index('pid')], axis=1).reset_index()
+    try:
+        pc = pc.drop(['level_0'], axis=1)
+    except:
+        pass
+    return pc
 
 
 def contract(t2):
-    t2['cont']=((-t2['xs'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['xs'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
+    t2['cont']=((-t2['x_s'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['x_s'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
     t2['cont_p']=t2.cont/t2.dv
     return pd.DataFrame({'cont' : (t2['cont']), 'cont_p' : (t2['cont_p']), 'pid':t2['pid']})
 
