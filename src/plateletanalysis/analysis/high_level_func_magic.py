@@ -174,7 +174,7 @@ def run_heatmaps(df,hue_var):
     ls_hue=[hue_var]
 
     df=dfc.led_bins_var(df)
-    df['down']=-df['dvz_s']
+    df['down']=-df['dvz_s'] #df['down']=-df['dvz_s']
     regions=sorted(df[hue_var].unique().tolist(),reverse=True)
 
     if len(dfc.inh_order)>3:
@@ -191,7 +191,7 @@ def run_heatmaps(df,hue_var):
 # Count heatmaps
 #-------------------------------------------------------------------------------------------------------------
     print(f'{73 * "-"}\nStarting analysis of Platelet count heatmaps \n{73 * "-"}')
-    params_heatmap.update({'vmax':100,'vmin':0,'groups':group1,'var':'pid','regions':regions})
+    params_heatmap.update({'vmax':100,'vmin':0,'groups':group1,'var':'pid','regions':regions,'cmap':'seq'})
     plot.do_heatmaps_count(df,**params_heatmap)#hue_var,
 
 
@@ -200,20 +200,20 @@ def run_heatmaps(df,hue_var):
     print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
 
     heat_mean_dic={
-        0:{'var':'ca_corr','v':{'vmax':80,'vmin':10}},
-        1:{'var':'dv','v':{'vmax':2,'vmin':0.3}},
-        2:{'var':'nba_d_5','v':{'vmax':10,'vmin':6}},
-        3:{'var':'nba_d_10','v':{'vmax':15,'vmin':8}},
-        4:{'var':'nrtracks','v':{'vmax':170,'vmin':30}},
-        5:{'var':'cont_s','v':{'vmax':200,'vmin':0}},
-        6:{'var':'cont_s','v':{'vmax':200,'vmin':-100}},
-        7:{'var':'down','v':{'vmax':150,'vmin':-50}},
+        0:{'var':'ca_corr','v':{'vmax':70,'vmin':10},'cmap':'seq'},#0:{'var':'ca_corr','v':{'vmax':80,'vmin':10}},
+        1:{'var':'dv','v':{'vmax':2,'vmin':0.3},'cmap':'seq'},
+        2:{'var':'nba_d_5','v':{'vmax':8,'vmin':6},'cmap':'seq'},#2:{'var':'nba_d_5','v':{'vmax':10,'vmin':6}},
+        3:{'var':'nba_d_10','v':{'vmax':13,'vmin':8},'cmap':'seq'},#3:{'var':'nba_d_10','v':{'vmax':15,'vmin':8}},
+        4:{'var':'nrtracks','v':{'vmax':150,'vmin':30},'cmap':'seq'},#4:{'var':'nrtracks','v':{'vmax':170,'vmin':30}},
+        5:{'var':'cont_s','v':{'vmax':250,'vmin':0},'cmap':'seq'},
+        6:{'var':'cont_s','v':{'vmax':250,'vmin':-100},'cmap':'div'},
+        7:{'var':'down','v':{'vmax':150,'vmin':-50},'cmap':'div'},#7:{'var':'down','v':{'vmax':150,'vmin':-50}},
          }
-    params_heatmap.update({'count_thr':0})
+    params_heatmap.update({'count_thr':5})
     for n in heat_mean_dic.keys():
         heat_dic=heat_mean_dic[n]
         print('Mean values for:',heat_dic['var'])
-        params_heatmap.update({'var':heat_dic['var'],'vmax':heat_dic['v']['vmax'],'vmin':heat_dic['v']['vmin']})
+        params_heatmap.update({'var':heat_dic['var'],'vmax':heat_dic['v']['vmax'],'vmin':heat_dic['v']['vmin'],'cmap':heat_dic['cmap']})
         plot.do_heatmaps_mean(df,**params_heatmap)#hue_var,
     
 
@@ -228,11 +228,11 @@ def run_heatmaps(df,hue_var):
               }
     
     var='pid'
-    params_heatmap.update({'var':var,'count_thr':10})
+    params_heatmap.update({'var':var,'count_thr':10,'cmap':'seq'})
     for n in heat_per_dic.keys():
         heat_dic=heat_per_dic[n]
         print('Fraction:',heat_dic['desc'])
-        params_heatmap.update({'vmax':heat_dic['v']['vmax'],'vmin':heat_dic['v']['vmin'],'desc':heat_dic['desc']})
+        params_heatmap.update({'vmax':heat_dic['v']['vmax'],'vmin':heat_dic['v']['vmin'],'desc':heat_dic['desc'],'cmap':'seq'})
         plot.do_heatmaps_perc(df,**params_heatmap)#hue_var,
 
 
@@ -245,9 +245,20 @@ def run_heatmaps_count(df,hue_var):
 #-------------------------------------------------------------------------------------------------------------    
 # Trajectories
 #-------------------------------------------------------------------------------------------------------------    
+print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
 
 def run_traj(df):
-    df=df
+    df=dfc.time_bin_var(df)
+    for series in cfg.demo_ls_ls_:
+        inh_subset=[cfg.shorttolong_dic[inh] for inh in series]
+        print(inh_subset)
+        pc=df[df.inh.isin(inh_subset)]
+        #print(pc_grp.head())
+        dfg=dfc.movesum_timebin_var(pc)
+        dfg=dfc.movclass_timebin_var(dfg,5)
+        xtra_params={}
+        plot.t_traj_mov(dfg,'t_tracknr',**xtra_params)
+
     
 
 

@@ -67,7 +67,7 @@ def isovol_bin_var1(df):
      
     return df
 
-def time_var(df):# Creates time variables time, minute and phase from frame
+def time_var(df):# Creates time variables sec, minute and phase from frame
     df['sec']=df['frame']*3.1
     return df
 
@@ -80,6 +80,12 @@ def minute_var(df):
 def phase_var(df):
     df.loc[:,'phase'] = pd.qcut(df['frame'], 3, labels=['Early','Mid','Late'])
     return df
+
+def time_bin_var(pc_tr):
+    cols=3
+    df=pc_tr.copy()
+    df['time_bin']=pd.cut(df.sec,bins=cols)
+    return(df)
 
 def injury_zone_var(df):# Creates variable that divide plts into thos inside and outside injury zone
     if 'dist_cz' in df.columns.tolist():
@@ -141,6 +147,34 @@ def mov_class_var(df):#New definition 191209
     df.loc[(df.exp_id==exp_id)&(df['particle'].isin(contractile)),'mov_class']="contractile"
     return df
 
+def movclass_timebin_var(dfg,tr_thr):
+    #dfg=dfg.reset_index()
+    #still=pd.unique(dfg[(dfg.dv<3)&(dfg.cont<1)].particle)
+    #loose=pd.unique(dfg[(dfg.dv>5)&(dfg.dvy<-2)&(dfg.cont<0)].particle)
+    #contractile=pd.unique(dfg[((dfg.cont/dfg.dv)>0.5)&(dfg.dv>5)].particle)
+    
+    dfg.loc[:,'mov_phase']='none'
+    dfg.loc[((dfg.dvxy_tot<3))&(dfg.t_nrtracks>tr_thr)&(dfg.zs<6),'mov_phase']="still"#&(dfg.cont_tot<1)
+    dfg.loc[(dfg.dvxy_tot>6)&(dfg.dvy_tot<-4)&(dfg.cont_tot<0)&(dfg.t_nrtracks>tr_thr),'mov_phase']="loose"
+    dfg.loc[((dfg.cont_tot/dfg.dvxy_tot)>0.5)&(dfg.dvxy_tot>5)&(dfg.t_nrtracks>tr_thr),'mov_phase']="contractile"
+    return dfg.reset_index()
+
+def movesum_timebin_var(df):
+    tr_thr=5
+    df=df.set_index('frame').sort_index().reset_index().set_index(['inh','exp_id','particle','time_bin']).sort_index()
+    dfg=df.groupby(['inh','exp_id','particle','time_bin'])#[['pid']].count().reset_index()
+    dfg_rank=dfg.rank()
+    df['t_tracknr']=dfg_rank.frame
+    dfg_count=dfg.count()
+    df['t_nrtracks']=dfg_count.frame
+    dfg_sum=dfg.sum()
+    df['cont_tot']=dfg_sum.cont
+    df['dvxy_tot']=abs(dfg_sum.dvx)+abs(dfg_sum.dvy)
+    df['dvz_tot']=dfg_sum.dvz
+    df['dvy_tot']=dfg_sum.dvy
+    #df=movclass_timebin_var(df,tr_thr).reset_index()
+    return df
+
 def movement_var(df):
     df['movement']='none'
     df.loc[(df.dv<0.1) & (df.tracked),'movement']='immobile' #pc.loc[(pc.dv)<0.3,'movement']='still'
@@ -148,6 +182,58 @@ def movement_var(df):
     df.loc[(df.dv>0.3) & (df.cont_p>0.5) ,'movement']='contracting'
     df.loc[(df.stab>3),'movement']='unstable'
     return df
+
+def rolling_blackman_var(df,var):
+    dfi=df.set_index(['inh','exp_id','particle','frame']).sort_index().reset_index().set_index(['inh','exp_id','particle'])    
+    dfg=dfi.groupby(['inh','exp_id','particle'])[var]
+    grp_ls_=[]
+    for index,gr in dfg:
+        roll=gr.rolling(window=5,win_type='blackman',min_periods=1,center=True).mean()
+        grp_ls_.append(roll)
+    var_sr=pd.concat(grp_ls_,axis=0)
+    dfi[f'{var}_roll']=var_sr
+    dfi=dfi.reset_index().set_index('pid').sort_index().reset_index()
+    return dfi
+    
+def rolling_mean_var(df,var):
+    dfi=df.set_index(['inh','exp_id','particle','frame']).sort_index().reset_index().set_index(['inh','exp_id','particle'])    
+    dfg=dfi.groupby(['inh','exp_id','particle'])[var]
+    grp_ls_=[]
+    for index,gr in dfg:
+        roll=gr.rolling(window=5,min_periods=1,center=True).mean()
+        grp_ls_.append(roll)
+    var_sr=pd.concat(grp_ls_,axis=0)
+    dfi[f'{var}_roll']=var_sr
+    dfi=dfi.reset_index().set_index('pid').sort_index().reset_index()
+    return dfi
+
+def fibrin_var(df):
+    dfi=df.set_index(['inh','exp_id','particle','frame']).sort_index().reset_index().set_index(['inh','exp_id','particle'])    
+    dfg=dfi.groupby(['inh','exp_id','particle'])['c1_mean']
+    grp_ls_=[]
+    for index,gr in dfg:
+        roll=gr.rolling(window=9,min_periods=1,center=False).mean()
+        grp_ls_.append(roll)
+    var_sr=pd.concat(grp_ls_,axis=0)
+    dfi['fib_roll']=var_sr
+    dfi['fib_diff']=dfi['c1_mean']-dfi['fib_roll']
+    dfi['relfibdiff']=dfi['fib_diff']/dfi['fib_roll']
+    dfi=dfi.reset_index().set_index('pid').sort_index().reset_index()
+    return dfi
+
+def rolling_mov_var(df):
+    movements=['dv','dvx','dvy','dvz','cont']
+    dfi=df.set_index(['inh','exp_id','particle','frame']).sort_index().reset_index().set_index(['inh','exp_id','particle'])    
+    dfg=dfi.groupby(['inh','exp_id','particle'])
+    grp_ls_=[]
+    for index,gr in dfg:
+        roll=gr[movements].rolling(window=5,win_type='blackman',min_periods=1,center=True).mean()
+        grp_ls_.append(roll)
+    var_sr=pd.concat(grp_ls_,axis=0)
+    for mov in movements:
+        dfi[f'{mov}_roll']=var_sr[mov]
+    dfi=dfi.reset_index().set_index('pid').sort_index().reset_index()
+    return dfi
 
 def scale_var(df,var1):
     var2=var1+'_s'
@@ -239,20 +325,24 @@ def build_df_lists(col_list,treatments):#Builds dataframe from lists of variable
         dfi=dfi[dfi.frame<194]# Remove rows with data from frames > 193
         dfi_col=[]#'path', 'inh','particle'
         absent_cols=[]
-        for col in col_list:
-            if col in dfi.columns:
-                dfi_col.append(col)
-            else:
-                absent_cols.append(col)      
-        df_.append(dfi.loc[:,dfi_col])
+        if 'all_vars' in col_list:
+            df_.append(dfi)
+        else:
+            for col in col_list:
+                if col in dfi.columns:
+                    dfi_col.append(col)
+                else:
+                    absent_cols.append(col)      
+            df_.append(dfi.loc[:,dfi_col])
         if absent_cols:
             print(f'columns absent in {fi}:{absent_cols}')
     pc=pd.concat(df_, ignore_index=True)#.reset_index()#,names='pid'
-    
+    #print('unique treatments',pc.inh.unique())
     for inh in pc.inh.unique():
         pc.loc[pc.inh==inh,'inh']=cfg.shorttolong_dic[inh]#.casefold()
     if 'minute' in pc.columns:
         pc.loc[:,'minute'] = pd.cut(pc['time'], 10, labels=np.arange(1,11,1))
+    
     
     pc=new_exp_ids(pc)
     #pc=pc.drop(['level_0','index'],axis=1).reset_index()
@@ -265,6 +355,9 @@ def build_df_lists(col_list,treatments):#Builds dataframe from lists of variable
     pc.index.name = 'pid'
     pc=pc.reset_index()
     pc=pc.rename(columns={'time':'sec'})
+    if 'Demo Injuries' in treatments:
+        inh_list=cfg.all_demo_
+        inh_order=[cfg.shorttolong_dic[inh] for inh in inh_list]
   #  #clear_output(wait=False)
     print(f'Treatments = {pc.inh.unique()}',flush=True) #Paths included = {pc.path.unique()}\n
     print(f'RESULTING DATAFRAME\nNo of columns: {pc.shape[1]} \nNo of rows: {pc.shape[0]}',
@@ -615,10 +708,10 @@ def save_fig(test_var,*xtra):#,formats,**xtra1
             file_name=file_name+'_'+stuff
         plot_path_png=f'{mfc.results_folder}\\{file_name}'
         plot_path_svg=plot_path_png
-        if mfc.plot_formats=='b':
+        if mfc.plot_formats=='both':
             plt.savefig(plot_path_png+'.png',bbox_inches='tight', dpi=300)
             plt.savefig(plot_path_svg+'.svg',bbox_inches='tight')
-        if mfc.plot_formats=='s':
+        if mfc.plot_formats=='svg':
             plt.savefig(plot_path_svg+'.svg',bbox_inches='tight')
         else:
             plt.savefig(plot_path_png+'.png',bbox_inches='tight', dpi=300)

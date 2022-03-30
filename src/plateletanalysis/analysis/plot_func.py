@@ -41,7 +41,7 @@ def params_choice(choice='line'):
         pms=dict(x="minute",hue='inh',hue_order=dfc.inh_order, ci=70, kind="point", height=6,aspect=1.25)
     elif choice == 'heat':
         pms=dict(orient='horizontal',groups=dfc.inh_order,var='ca_corr', smooth='gauss',count_thr=0, 
-                xticklabels=16,yticklabels=14, cmap="turbo",vmax=100,vmin=0)#yticklabels=2
+                xticklabels=16,yticklabels=14, cmap="viridis",vmax=100,vmin=0)#yticklabels=2
     return pms
 
 
@@ -603,7 +603,10 @@ def heatmap_mean(dfg,**params):#,center_color,max_col,min_col,groups,var,orient#
             #count_mask=dfg_count.iloc[:,:]<count_threshold
             #dfg1=dfg1.groupby(['zled','tled','inh_exp_id']).mean()[var].reset_index()
             dfg_count=dfg_count.reindex_like(dfg_mean)
-            dfg_mean[dfg_count.iloc[:,:]<count_thr]=params['vmin']
+            if params['cmap']=='div':
+                dfg_mean[dfg_count.iloc[:,:]<count_thr]=0
+            else:
+                dfg_mean[dfg_count.iloc[:,:]<count_thr]=params['vmin']
         plot_heatmap(dfg_mean,n,ax,**params)
     dfc.save_fig(params['var']+'_'+'heatmap_mean',heat_col_var+'_'+str(params['region']))
     plt.show()
@@ -699,7 +702,8 @@ def heatmap_filter(dfg1,smooth):
     return dfg1
 
 def plot_heatmap(dfg1,n,ax,**params):
-    sns.set_context("notebook", font_scale=2, rc={"lines.linewidth": 2})   
+    sns.set_context("notebook", font_scale=2, rc={"lines.linewidth": 2})
+    params['cmap']=cfg.cmaps[params['cmap']]
     if params['orient']=='horizontal':
         horizontal_heatmap(dfg1,n,ax,**params) 
                 
@@ -747,30 +751,31 @@ def horizontal_heatmap(dfg1,n,ax,**params):
 # Mapping platelet positions
 #---------------------------------------------------------------------------
 def plt_map(df_obj,col_var,x_var,vmin,vmax): #Map of platelets at different time points coloured with name variable
-    plt.rcParams['image.cmap'] = "turbo"    #plt.rcParams['image.cmap'] = 'jet_r'
+    #plt.rcParams['image.cmap'] = 'viridis'#'coolwarm'#"turbo"    #plt.rcParams['image.cmap'] = 'jet_r'
     sns.set_style("white")
     #Set boundaries of plots #params={'col':'path','row':'c','hue':'c',}
     lims=['x_s', 'ys', 'zs']
-    limsv={}
-    border=1.5
-    for l in lims:
-        limsv[l]=df_obj[l].min()-20, df_obj[l].max()+20   
+    limsv=dict(x_s=(-100,100),ys=(-120,80),zs=(0,100))
+    #limsv={}
+    #for l in lims:
+    #    limsv[l]=df_obj[l].min(), df_obj[l].max()   
     #Pick frames for visualization
-    frames=pd.unique(df_obj.frame)[::20]+1
+    frames=[10,20,30,50,90,180]#pd.unique(df_obj.frame)[::20]+10
     ncols=3
     nrows=len(frames)
     #Set figure size  
-    plt.figure(figsize=(ncols*4,nrows*3))
+    plt.figure(figsize=(ncols*4,nrows*4))
     #Choose plotting dimensions in graphs
-    cols=[('x_s', 'ys'), ('x_s', 'zs'), ('ys', 'zs')]
+    cols=[('x_s', 'ys','zs'), ('x_s', 'zs','ys'), ('ys', 'zs','x_s')]
     ### Set color variable name='cld'#name='stab'#name='c'#name='depth' #colorv=[1,2,4,8] #name='c2_max'
-    name=col_var
     #vmin=0 #vmax=30#vmax=10 #vmax=400
     for r, f in enumerate(frames):
-        sel_f=df_obj[df_obj.frame==f]
+        #sel_f=df_obj[df_obj.frame==f]
+        sel_f=df_obj[df_obj.frame.isin(range(f-2,f+2))]
         for c, xy in enumerate(cols):
+            sel_f.sort_values(by=xy[2])
             ax=plt.subplot2grid((nrows, ncols), (r, c))
-            ax.scatter(sel_f[xy[0]], sel_f[xy[1]], alpha=0.5, c=sel_f[name],vmin=vmin,vmax=vmax,s=20, linewidth=0.1 )#TOG BORT , vmin=vmin, vmax=vmax,)
+            ax.scatter(sel_f[xy[0]], sel_f[xy[1]], alpha=0.7, c=sel_f[col_var],vmin=vmin,vmax=vmax,s=30, linewidth=0.1,cmap='coolwarm')#'bwr' 'coolwarm'TOG BORT , vmin=vmin, vmax=vmax,)
             ax.set_title('Time (sec): '+ str(np.round(sel_f[x_var].mean())),fontsize=12)#sel_f.time.mean()
             ax.set_ylim(limsv[xy[1]])
             ax.set_xlim(limsv[xy[0]])
@@ -779,70 +784,94 @@ def plt_map(df_obj,col_var,x_var,vmin,vmax): #Map of platelets at different time
             ax.set_xlabel('')
             ax.set_ylabel('')
             ax.tick_params(labelsize=12)
+            if xy[1]=='ys':
+                circle=plt.Circle((0, 0), 37.5, alpha=0.4,fc='grey',edgecolor='black')#edgecolor='black',linewidth=7,fill='black'
+                ax.add_patch(circle)
+            else:
+                ax.hlines(y=0, xmin=-38, xmax=38, linewidth=8, color='grey',alpha=0.8)
             sns.despine(top=True, right=True, left=True, bottom=True)
             #ax.ticklabel_format()
             #ax.set_axis_bgcolor('black')
     plt.tight_layout()
     dfc.save_fig(col_var,'plt_map')  
 
+def plt_map2(df_obj,col_var,x_var,vmin,vmax): #Map of platelets at different time points coloured with name variable
+    #plt.rcParams['image.cmap'] = 'viridis'#'coolwarm'#"turbo"    #plt.rcParams['image.cmap'] = 'jet_r'
+    sns.set_style("white")
+    #Set boundaries of plots #params={'col':'path','row':'c','hue':'c',}
+    lims=['x_s', 'ys', 'zs']
+    limsv=dict(x_s=(-100,100),ys=(-120,80),zs=(0,100))
+    #limsv={}
+    #for l in lims:
+     #   limsv[l]=df_obj[l].min()-1, df_obj[l].max()+1   
+    #Pick frames for visualization
+    frames=[10,20,30,50,90,180]#pd.unique(df_obj.frame)[::20]+10
+    ncols=len(lims)
+    nrows=len(frames)
+    size=ncols*nrows
+    #Set figure size  
+    #Choose plotting dimensions in graphs
+    cols=[('x_s', 'ys','zs'), ('x_s', 'zs','ys'), ('ys', 'zs','x_s')]
+    ### Set color variable name='cld'#name='stab'#name='c'#name='depth' #colorv=[1,2,4,8] #name='c2_max'
+    #vmin=0 #vmax=30#vmax=10 #vmax=400
+    for c, xy in enumerate(cols,0):
+        fig=plt.figure(figsize=(6,nrows*6))#figsize=(4,30)
+        #fig.set_title(inhibitor)
+        gs=GridSpec(nrows,1)
+        plot_nr=0
+        for r, f in enumerate(frames):
+            sel_f=df_obj[df_obj.frame.isin(range(f-2,f+2))]
+            #sel_f=df_obj[df_obj.frame==f]
+            sel_f.sort_values(by=xy[2])
+            ax=fig.add_subplot(gs[plot_nr])
+            ax.scatter(sel_f[xy[0]], sel_f[xy[1]], alpha=0.7, c=sel_f[col_var],vmin=vmin,vmax=vmax,s=60, linewidth=0.1,cmap='coolwarm' )#TOG BORT , vmin=vmin, vmax=vmax,)
+            ax.set_title('Time (sec): '+ str(np.round(sel_f[x_var].mean())),fontsize=12)#sel_f.time.mean()
+            ax.set_ylim(limsv[xy[1]])
+            ax.set_xlim(limsv[xy[0]])
+            plt.xticks([])#-37.5,37.5
+            plt.yticks([])#-37.5,37.5
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.tick_params(labelsize=12)
+            if xy[1]=='ys':
+                circle=plt.Circle((0, 0), 37.5, alpha=0.4,fc='grey',edgecolor='black')#edgecolor='black',linewidth=7,fill='black'
+                ax.add_patch(circle)
+            else:
+                ax.hlines(y=0, xmin=-38, xmax=38, linewidth=8, color='grey',alpha=0.8)
+            sns.despine(top=True, right=True, left=True, bottom=True)
+            plot_nr+=1
+                #ax.ticklabel_format()
+                #ax.set_axis_bgcolor('black')
+        gs.tight_layout(fig)
+    #plt.tight_layout()
+    dfc.save_fig(col_var,'plt_map')  
 #---------------------------------------------------------------------------
 # Mapping platelet trajectories
 #---------------------------------------------------------------------------
-def mov_class_phase(dfg,tr_thr):
-    #dfg=dfg.reset_index()
-    #still=pd.unique(dfg[(dfg.dv<3)&(dfg.cont<1)].particle)
-    #loose=pd.unique(dfg[(dfg.dv>5)&(dfg.dvy<-2)&(dfg.cont<0)].particle)
-    #contractile=pd.unique(dfg[((dfg.cont/dfg.dv)>0.5)&(dfg.dv>5)].particle)
-    
-    dfg.loc[:,'mov_phase']='none'
-    dfg.loc[((dfg.dvxy_tot<3)&(dfg.cont_tot<1))&(dfg.t_nrtracks>tr_thr),'mov_phase']="still"
-    dfg.loc[(dfg.dvxy_tot>5)&(dfg.dvy_tot<-2)&(dfg.cont_tot<0)&(dfg.t_nrtracks>tr_thr),'mov_phase']="loose"
-    dfg.loc[((dfg.cont_tot/dfg.dvxy_tot)>0.5)&(dfg.dvxy_tot>5)&(dfg.t_nrtracks>tr_thr),'mov_phase']="contractile"
-    return dfg
-
-def sum_phase(pc_tr):
-    tr_thr=5
-    cols=3
-    df=pc_tr.copy()
-    df['time_bin']=pd.cut(df.sec,bins=cols)
-    df=df.set_index('frame').sort_index().reset_index().set_index(['inh','exp_id','particle','time_bin']).sort_index()
 
 
-    dfg=df.groupby(['inh','exp_id','particle','time_bin'])#[['pid']].count().reset_index()
-    dfg_rank=dfg.rank()
-    df['t_tracknr']=dfg_rank.frame
-    dfg_count=dfg.count()
-    df['t_nrtracks']=dfg_count.frame
-    dfg_sum=dfg.sum()
-    df['cont_tot']=dfg_sum.cont
-    df['dvxy_tot']=abs(dfg_sum.dvx)+abs(dfg_sum.dvy)
-    df['dvz_tot']=dfg_sum.dvz
-    df['dvy_tot']=dfg_sum.dvy
-    df=mov_class_phase(df,tr_thr).reset_index()
-    return df
 
 #OBS! MÅSTE FIXA VARIABELN time SÅ ATT DEN FUNGERAR I FUNKTIONEN INNAN DENNA FUNKAR ATT KÖRA!!!"
 def t_traj_mov(df,c_var='ca_corr',**xtra_params):#vmin,vmax
-    from matplotlib.gridspec import GridSpec
     df=df.sort_values(by=['pid'])
     sns.set_style("white")#sns.set_style("dark")# sns.set_style("white")
     plt.rcParams['image.cmap'] = 'coolwarm'
     plt.rcParams.update({'font.size': 22})
-    params={'cols':3,'nrows':3,'hue':cfg.mov_class_order1,'vmin':0,'vmax':100,'time_bins':'phase','c_var':'tracknr'}
+    params={'cols':3,'nrows':3,'hue':cfg.mov_class_order1,'vmin':0,'vmax':70,'time_bins':'phase','c_var':'tracknr'}
     params.update(xtra_params)
     for c, inhibitor in enumerate(pd.unique(df.inh),0):
         fig=plt.figure(figsize=(12,14))#figsize=(4,30)
         #fig.set_title(inhibitor)
         gs=GridSpec(params['nrows'],params['cols'])
         plot_nr=0
-        for time in df[params['time_bins']].unique():
+        for time in df['time_bin'].unique():
             for pop in params['hue']:
-                plt_pop=df[(df.mov_time==pop)&(df[params['time_bins']]==time)&(df.inh==inhibitor)].copy()
+                plt_pop=df[(df.mov_phase==pop)&(df['time_bin']==time)&(df.inh==inhibitor)].copy()
                 #pop_part=plt_pop.particle.unique()
                 ax=fig.add_subplot(gs[plot_nr])
                 
                 plt_pop.sort_values(params['c_var'],ascending=False)
-                plt.scatter(x=plt_pop.x_s, y=plt_pop.ys , c=plt_pop[c_var], s=10, alpha=0.7, cmap='coolwarm',vmax=params['vmax'], vmin=params['vmin'], linewidth=0)
+                plt.scatter(x=plt_pop.x_s, y=plt_pop.ys , c=plt_pop[c_var], s=10, alpha=0.7, cmap='viridis',vmax=params['vmax'], vmin=params['vmin'], linewidth=0)#'coolwarm'
                 #plt.scatter(x=0, y=0, s=375,c='none', alpha=0.5, linewidth=40,edgecolor='black')#c='black',     
                 circle=plt.Circle((0, 0), 37.5, alpha=0.4,fc='grey',edgecolor='black')#edgecolor='black',linewidth=7,fill='black'
                 ax.add_patch(circle)
@@ -851,7 +880,7 @@ def t_traj_mov(df,c_var='ca_corr',**xtra_params):#vmin,vmax
                 plt.ylim(-125,100)
                 plt.xticks([])#-37.5,37.5
                 plt.yticks([])#-37.5,37.5
-                if pop==plot[0]:
+                if pop==params['hue'][0]:
                     ax.set_ylabel(f'Time range: {np.round(time.left,-1)}-{np.round(time.right,-1)} s',fontsize=14)
                 if plot_nr<3:
                     ax.set_title(pop)
@@ -860,7 +889,8 @@ def t_traj_mov(df,c_var='ca_corr',**xtra_params):#vmin,vmax
                 plot_nr+=1
         sns.despine(top=True, right=True, left=True, bottom=True)
         fig.suptitle(inhibitor, fontsize=16)
-        dfc.save_fig()
+        treatment=cfg.longtoshort_dic[inhibitor]
+        dfc.save_fig(f'traj_map_{treatment}_','mov_class')
         plt.show()
 
 
@@ -1033,4 +1063,3 @@ def boxplot_plt_fraction(df):
     ax.set_ylabel('Fraction (%)')
     
     dfc.save_fig('fraction','boxplot')
-
