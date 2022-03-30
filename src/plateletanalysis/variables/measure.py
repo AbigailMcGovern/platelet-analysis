@@ -117,12 +117,10 @@ def _nearest_neighbours_average(pc):
     #print(len(pc))
     p1i=pc.reset_index().pid
     if len(pc)>np.array(nba_list).max():
-        
         dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
         dmap_sorted=np.sort(dmap, axis=0)
         #dmap_idx_sorted=np.argsort(dmap, axis=0)
         for i in nba_list:
-
             nb_dist=(dmap_sorted[1:(i+1),:]).mean(axis=0)
             #nb_idx=dmap_idx_sorted[i+1,:]
             key_dist['nba_d_' + str(i)]=nb_dist
@@ -132,11 +130,55 @@ def _nearest_neighbours_average(pc):
         a = np.empty((len(pc)))
         a[:] = np.nan
         key_dist[('nba_d_' + str(nba_list[0]))]=a
-    
     df=pd.DataFrame(key_dist)
     df=pd.concat([p1i, df], axis=1)
     return df
 
+
+def add_neighbour_lists(df, max_dist=15):
+    nb_df = {
+        'nb_particles' : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        'nb_disp' : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        'pid' : df['pid'].values
+    }
+    nb_df = pd.DataFrame(nb_df).set_index('pid')
+    files = pd.unique(df['path'])
+    for f in files:
+        file_df = df[df['path'] == f]
+        frames = pd.unique(df['frame'])
+        for frame in frames:
+            frame_wise_neigbour_list(file_df, frame, max_dist, nb_df)
+    df = pd.concat([df.set_index('pid'), nb_df], axis=1).reset_index()
+    return df
+
+
+def frame_wise_neigbour_list(df, frame, max_dist, nb_df):
+    f_df = df[df['frame'] == frame]
+    f_df = f_df.set_index('pid') 
+    idxs = f_df.index.values
+    for p in idxs:
+        x, y, z = f_df.loc['x_s', p], f_df.loc['ys', p], f_df.loc['zs', p]
+        dx = x - f_df['x_s'].values
+        dy = y - f_df['ys'].values
+        dz = z - f_df['zs'].values
+        disp = ((dx ** 2) + (dy ** 2) + (dz ** 2)) ** 0.5
+        keep = np.where(disp < max_dist)
+        nb_ps = list(f_df['particle'].values[keep])
+        nb_df.loc['nb_particles', p] = nb_ps
+        nb_df.loc['nb_disp', p] = list(disp[keep])
+
+        
+
+#TODO
+
+def local_contraction(df):
+    '''
+    Local contraction is the extent to which the platelet has moved closer to its
+    assigned neighbour platelets since the previous point in time
+
+    TODO: decide on a sensible mathematical definition of this quantitiy
+    '''
+    pass
 
 
 # ------
@@ -354,4 +396,56 @@ def contract(t2):
     t2['cont']=((-t2['x_s'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['x_s'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
     t2['cont_p']=t2.cont/t2.dv
     return pd.DataFrame({'cont' : (t2['cont']), 'cont_p' : (t2['cont_p']), 'pid':t2['pid']})
+
+
+# -----------
+# Path Length
+# -----------
+
+def platelet_displacement(df):
+    df = df.sort_values('pid').reset_index()
+    d_df = {
+        'disp' : np.array([np.nan, ] * len(df)).astype(np.float64),
+        'disp_sum' : np.array([np.nan, ] * len(df)).astype(np.float64),
+        'tort' : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        'tort_p' : np.array([np.nan, ] * len(df)).astype(np.float64)
+    }
+    files = pd.unique(df['path'])
+    for f in files:
+        img_df = df[df['path'] == f]
+        platelets = pd.unique(img_df['particle'])
+        n_iter = len(platelets)
+        with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
+            for p in platelets:
+                p_displacement_from_tmin1(img_df, p, d_df)
+    d_df = pd.DataFrame(d_df)
+    d_df.reset_index(drop=True)
+    df = pd.concat([df, d_df], axis=1)
+    df = df.drop(['pid'], axis=1)
+    df['pid'] = range(len(df))
+    try:
+        df = df.drop(['level_0'], axis=1)
+    except:
+        pass
+    return df
+
+
+def p_displacement_from_tmin1(df, particle, d_df):
+    p_df = df[df['particle'] == particle]
+    p_df = p_df.sort_values('frame')
+    idxs = p_df.index.values
+    dx = np.append(np.diff(0., p_df['x_s']))
+    dy = np.append(np.diff(0., p_df['ys']))
+    dz = np.append(np.diff(0., p_df['zs']))
+    disp = ((dx ** 2) + (dy ** 2) + (dz ** 2)) ** 0.5
+    disp_sum = np.cumsum(disp)
+    tort = disp_sum / d_df['dist_c'].values
+    tort_p = disp_sum[-1] / d_df['dist_c'].values[-1]
+    tort_p = tort_p * len(disp)
+    d_df.loc['disp', idxs] = disp
+    d_df.loc['disp_sum', idxs] = disp_sum
+    d_df.loc['tort', idxs] = tort
+    d_df.loc['tort_p', idxs] = tort_p
+
+
 
