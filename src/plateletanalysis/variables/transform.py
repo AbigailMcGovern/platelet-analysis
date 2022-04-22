@@ -105,7 +105,7 @@ def spherical_coordinates(df):
 
     More formally:
     rho = (x ** 2 + y ** 2 + z ** 2) ** 0.5
-    theta = arccos(z / rho)
+    theta = 1/2 * π - arccos(z / rho)
     phi = arctan(y / x)
 
     In this case, in order to make the values of phi optimally useful, 
@@ -120,7 +120,7 @@ def spherical_coordinates(df):
     Rho represents displacement of the platelet from the 
     centre of the injury. Theta represents the position in z according to the 
     platelet's height in the sphere. Larger values of theta represent platelets
-    lower in the dome. Phi represents the position of platelets in the xy
+    lower higher in the dome. Phi represents the position of platelets in the xy
     plane. 0-90˚ (0-π/2) represents platelets in the anterior of the clot and 
     -90˚-0 (-π/2-0) represents platelets in the posterior. Therefore, the 
     coordinates are insensitive to which side of the clot the platelet is 
@@ -141,6 +141,7 @@ def _spherical_coord_rho(df):
 
 def _spherical_coord_theta(df):
     theta = np.arccos(df['zs'].values / df['rho'].values)
+    theta = 0.5 * np.pi - theta # this changes the angle so that 0 rad when platelet at bottom of image
     return pd.DataFrame({'pid' : df['pid'].values, 'theta' : theta})
 
 
