@@ -46,8 +46,7 @@ def frame_wise_neigbour_lists(df, frame, max_dist, nb_df):
         nb_df.loc['nb_disp', p] = disps
 
 
-        
-
+    
 #TODO
 
 def local_contraction(df):
