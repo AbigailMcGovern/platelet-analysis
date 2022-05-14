@@ -22,15 +22,32 @@ def platelet_measurments(df):
 
 
 # -------------------
-# Spatial Derivatives
+# Derivative Estimates
 # ------------------- 
 
-def finite_difference_derivatives(df):
+def finite_difference_derivatives(
+    df, 
+    coords=('x_s', 'ys', 'zs'), # can use spherical coordinates here
+    names=('dvx', 'dvy', 'dvz', 'dv') # can name for spherical coordinates
+    ):
+    '''
+    Finite difference estimates of the velocity in 3D. 
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        The tracks data
+    coords: 3-tuple of str
+        The names of the columns containing the 3D coordinates
+    names: 4-tuple of str
+        The names of the columns into which to put the coordinate 
+        partial derrivates (indices 0-2) and the 2-norm (index 3)
+    '''
     df = df.sort_values('pid').reset_index()
     dv_df = {
-        'dvx' : np.array([np.nan, ] * len(df)).astype(np.float64),
-        'dvy' : np.array([np.nan, ] * len(df)).astype(np.float64), 
-        'dvz' : np.array([np.nan, ] * len(df)).astype(np.float64),  
+        names[0] : np.array([np.nan, ] * len(df)).astype(np.float64),
+        names[1] : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        names[2] : np.array([np.nan, ] * len(df)).astype(np.float64),  
         'pid' : df.index.values
     }
     files = pd.unique(df['path'])
@@ -43,23 +60,43 @@ def finite_difference_derivatives(df):
                 p_df = img_df[img_df['particle'] == p]
                 p_df = p_df.sort_values('frame')
                 idxs = p_df.index.values
-                dvx = np.append(np.diff(p_df['x_s']), np.nan)
-                dvy = np.append(np.diff(p_df['ys']), np.nan)
-                dvz = np.append(np.diff(p_df['zs']), np.nan)
-                dv_df['dvx'][idxs] = dvx
-                dv_df['dvy'][idxs] = dvy
-                dv_df['dvz'][idxs] = dvz
+                dvx = np.append(np.diff(p_df[coords[0]]), np.nan)
+                dvy = np.append(np.diff(p_df[coords[1]]), np.nan)
+                dvz = np.append(np.diff(p_df[coords[2]]), np.nan)
+                dv_df[names[0]][idxs] = dvx
+                dv_df[names[1]][idxs] = dvy
+                dv_df[names[2]][idxs] = dvz
                 progress.update(1)
     dv_df = pd.DataFrame(dv_df)
     dv_df.reset_index(drop=True)
     df = pd.concat([df, dv_df], axis=1)
-    df['dv']=(df.dvx**2+df.dvy**2+df.dvz**2)**0.5
+    df[names[3]]=(df.dvx**2+df.dvy**2+df.dvz**2)**0.5
     df = df.drop(['pid'], axis=1)
     df['pid'] = range(len(df))
     try:
         df = df.drop(['level_0'], axis=1)
     except:
         pass
+    return df
+
+
+
+def add_finite_diff_derivative(df, col):
+    files = pd.unique(df['path'])
+    n_iter = len(df)
+    df = df.set_index('pid')
+    with tqdm(total=n_iter, desc=f'Adding finite difference derivatives for {col}') as progress:
+        for f in files:
+            file_df = df[df['path'] == f]
+            platelets = pd.unique(df['particle'])
+            for p in platelets:
+                p_df = file_df[file_df['particle'] == p]
+                idxs = p_df.index.values
+                diff = np.diff(p_df[col].values)
+                diff = np.concatenate([np.array([np.NaN, ]), diff])
+                df.loc[idxs, f'{col}_diff'] = diff
+                progress.update(1)
+    df = df.reset_index()
     return df
 
 
@@ -134,100 +171,6 @@ def _nearest_neighbours_average(pc):
     df=pd.DataFrame(key_dist)
     df=pd.concat([p1i, df], axis=1)
     return df
-
-
-# ---------
-# Embolysis
-# ---------
-
-
-def embolysis(df, r_emb=10):
-    emb_df = {
-        'emb_nbs' : [None, ] * len(df), 
-        'pid' : df['pid'].values 
-    }
-    emb_df = pd.DataFrame(emb_df).set_index('pid')
-    df['terminates'] = df['tracknr'] == df['nrtracks']
-    term_df = df[df['terminates'] == True]
-    files = pd.unique(df['path'])
-    get_embolysis_freinds = _embolysis_partners(df, r_emb)
-    for f in files:
-        p_df = term_df[term_df['path'] == f]
-        idxs = p_df['pid'].values # not index for p_df but for emb_df
-        emb_ptns = p_df['pid'].apply(get_embolysis_freinds)
-        emb_df.loc['emb_nbs', idxs] = emb_ptns
-    df = pd.concat([df.set_index('pid'), emb_df], axis=1).reset_index()  
-    return df
-
-
-@curry
-def _embolysis_partners(df, r_emb, pid):
-    row = df[df['pid'] == pid].reset_index()
-    # are any neighbours also terminating at this time point or in the next?
-    nbs = row.loc['nb_particles', 0]
-    nbs = _ensure_list(nbs)
-    nb_disp = row.loc['nb_disp', 0]
-    nb_disp = _ensure_list(nb_disp)
-    frame = row.loc['frame', 0]
-    nb_ptns = []
-    for i, n in enumerate(nbs):
-        if nb_disp[i] <= r_emb:
-            nb_row = df[df['particle'] == n].reset_index()
-            if nb_row.loc['terminating', 0]:
-                nb_ptns.append(n)
-            else: # only need to move to next tp if not terminating
-                nb_row = df[(df['particle'] == n) & (df['frame'] == frame + 1)]
-                if nb_row.loc['terminating', 0]:
-                    nb_ptns.append(n)
-    if len(nb_ptns) == 0:
-        nb_ptns = None
-    return nb_ptns
-
-
-
-# ------
-# DBSCAN
-# ------
-
-def DBSCAN_cluster_1(pc):
-    min_samples=5
-    eps_list=[5,7.5,10,15,20]
-    cl_=[]
-    X=pc[['x_s','ys','zs']].values # 3D
-    for eps in eps_list:
-        # Compute DBSCAN
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        labels = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        cl_.append(pd.DataFrame({('cl_idx_' + str(eps) ) : (labels)}))
-    cl_.append(pc.reset_index().pid)
-    return (pd.concat(cl_, axis=1))
-
-
-def DBSCAN_cluster_2(pc):
-    min_samples=5
-    eps_list=np.arange(3, 31, 2)
-    cl_=[]
-    X=pc[['x_s','ys','zs']].values # 3D
-    for eps in eps_list:
-        # Compute DBSCAN
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        labels = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        labels[labels>-1]=eps
-        labels[labels==-1]=42
-        cl_.append(pd.DataFrame({('cl_idx_' + str(eps) ) : (labels)}))
-    cld_grp=pd.concat(cl_, axis=1)
-    cld_grp=pd.DataFrame({('cld' ) : (cld_grp.min(axis=1))})
-    cld_grp['pid']=(pc.reset_index().pid)
-    return (cld_grp)
-
 
 
 # ---------

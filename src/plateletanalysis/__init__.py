@@ -4,7 +4,7 @@ from .variables.measure import finite_difference_derivatives, stability, \
 from .variables.transform import adjust_coordinates, z_floor
 from .variables.basic import add_basic_variables
 from .variables.calcium import corrected_calcium
-from .analysis.menu_func import run_analysis
+from .analysis.menu_func import input
 
 __all__ = [
     'get_experiment_df', 

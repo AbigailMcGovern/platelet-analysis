@@ -51,6 +51,9 @@ def adjust_coordinates(
     return df # superflous return... just to make more readable when used *upside down smiley*
 
 
+def revert_to_pixel_coords(df):
+    pass
+
 def z_floor(
     df, 
     zs_col='zs', 
@@ -147,4 +150,4 @@ def _spherical_coord_theta(df):
 
 def _spherical_coord_phi(df):
     phi = np.arctan(df['ys'].values / df['x_s'].values)
-    pd.DataFrame({'pid' : df['pid'].values, 'phi' : phi})
+    return pd.DataFrame({'pid' : df['pid'].values, 'phi' : phi})
