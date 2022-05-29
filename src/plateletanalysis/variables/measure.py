@@ -83,17 +83,22 @@ def finite_difference_derivatives(
 
 def add_finite_diff_derivative(df, col):
     files = pd.unique(df['path'])
-    n_iter = len(df)
-    df = df.set_index('pid')
+    n_iter = 0
+    for f in files:
+        f_df = df[df['path'] == f]
+        platelets = pd.unique(df['particle'])
+        n_iter += len(platelets)
+    #df = df.set_index('pid')
     with tqdm(total=n_iter, desc=f'Adding finite difference derivatives for {col}') as progress:
         for f in files:
             file_df = df[df['path'] == f]
             platelets = pd.unique(df['particle'])
             for p in platelets:
                 p_df = file_df[file_df['particle'] == p]
+                p_df = p_df.sort_values('frame')
                 idxs = p_df.index.values
                 diff = np.diff(p_df[col].values)
-                diff = np.concatenate([np.array([np.NaN, ]), diff])
+                diff = np.concatenate([diff, np.array([np.NaN, ])])
                 df.loc[idxs, f'{col}_diff'] = diff
                 progress.update(1)
     df = df.reset_index()
@@ -348,6 +353,35 @@ def contract(t2):
 # -----------
 # Path Length
 # -----------
+
+def path_disp_n_tortuosity(df):
+    '''
+    Add the variables path length (path_len), displacement (disp), 
+    '''
+    files = pd.unique(df['path'])
+    for f in files:
+        img_df = df[df['path'] == f]
+        platelets = pd.unique(img_df['particle'])
+        n_iter = len(platelets)
+        with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
+            for p in platelets:
+                p_df = img_df[img_df['particle'] == p]
+                idxs = p_df.index.values
+                pathlen = np.cumsum(np.abs(p_df['dv'].values))
+                df.loc[idxs, 'path_len'] = pathlen
+                t0 = p_df['frame'].min()
+                t0_i = p_df[p_df['frame'] == t0].index.values[0]
+                x0, y0, z0 = p_df.loc[t0_i, 'x_s'], p_df.loc[t0_i, 'ys'], p_df.loc[t0_i, 'zs']
+                x_disp = p_df['x_s'] - x0
+                y_disp = p_df['ys'] - y0
+                z_disp = p_df['zs'] - z0
+                disp = ((x_disp ** 2) + (y_disp ** 2) + (z_disp ** 2)) ** 0.5
+                df.loc[idxs, 'disp'] = disp
+                df.loc[idxs, 'tort'] = pathlen / disp
+                progress.update(1)
+        return df
+
+
 
 def platelet_displacement(df):
     df = df.sort_values('pid').reset_index()

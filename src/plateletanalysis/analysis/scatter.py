@@ -17,6 +17,8 @@ from mpl_toolkits import mplot3d
 # df_gb['path'] = paths
 # df_gb['frame'] = frames
 
+# plot_scatter_3d(sub_df, 'umap_0_SCnV', 'umap_1_SCnV', 'frame', map_col, 'UMAP 0', 'UMAP 1', 'frame')
+
 def plot_scatter(df, x_col, y_col, c_map, title, xlab, ylab, c_col='path'):
     plt.scatter(df[x_col], df[y_col], c=df[c_col].map(c_map), s=1)
     plt.title(title)
@@ -24,6 +26,12 @@ def plot_scatter(df, x_col, y_col, c_map, title, xlab, ylab, c_col='path'):
     plt.ylabel(ylab)
     plt.show()
     
+def plot_scatter_map(df, x_col, y_col, c_map, c_col):
+    plt.scatter(df[x_col], df[y_col], c=df[c_col].map(c_map), s=1)
+    plt.title(c_col)
+    plt.xlabel(x_col)
+    plt.ylabel(y_col)
+    plt.show()
 
 
 def plot_scatter_3d(df, x_col, y_col, z_col, c_map, xlab, ylab, zlab, c_col='path', map=True):
@@ -86,6 +94,19 @@ def exp_by_frame_timerange_scatter(
     plt.ylabel(y_lab)
     plt.show()
 
+
+
+def basic_scatter(df, x_col, y_col, c_col, v_min=None, v_max=None):
+    if v_min is None or v_max is None:
+        plt.scatter(df[x_col], df[y_col], s=1, c=df[c_col])
+    else:
+        plt.scatter(df[x_col], df[y_col], s=1, c=df[c_col], vmin=v_min, vmax=v_max)
+    plt.xlabel(x_col)
+    plt.ylabel(y_col)
+    plt.colorbar()
+    plt.title(c_col)
+    plt.show()
+
     # scatter @ over a select number of frames
 
 # plot_scatter(df_190_ii, 'ca_corr_diff', 'nb_density_15', map_col, 'Platelets at f190 - calcium derivative versus local density derivative', 'Ca2+ derivative', 'local density')
@@ -115,3 +136,23 @@ def exp_by_frame_timerange_scatter(
 #plot_scatter_3d_1(df_gb, df_gb['frame'], df_gb['nb_density_15'], df_gb_sem['ca_corr'], map_col, 'Frame', 'Local density mean', 'Corrected calcium SEM', c_col='path')
 
 
+def cmap_dict(vals, cols, other_vals, other_col='lightgray'):
+    cmap = {vals[i] : cols[i] for i in range(len(vals))}
+    for v in other_vals:
+        cmap[v] = other_col
+    return cmap
+
+def recode_dict(vals, other_vals, other_code=0):
+    codes = {vals[i] : i for i in range(len(vals))}
+    for v in other_vals:
+        codes[v] = other_code
+    return codes
+
+    #codes = demo_df['SCnV_add_0_udbscan_0.1'].map(
+
+def path_value_counts(df):
+    paths = pd.unique(df['path'])
+    for path in paths:
+        pdf = df[df['path'] == path]
+        print(path)
+        print(pdf['SCnV_add_1_udbscan_0.1'].value_counts())

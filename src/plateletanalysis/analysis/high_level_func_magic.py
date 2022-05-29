@@ -197,7 +197,7 @@ def run_heatmaps(df,hue_var):
 
 # Mean heatmaps
 #-------------------------------------------------------------------------------------------------------------    
-    print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
+    #print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
 
     heat_mean_dic={
         0:{'var':'ca_corr','v':{'vmax':70,'vmin':10},'cmap':'seq'},#0:{'var':'ca_corr','v':{'vmax':80,'vmin':10}},
@@ -245,7 +245,7 @@ def run_heatmaps_count(df,hue_var):
 #-------------------------------------------------------------------------------------------------------------    
 # Trajectories
 #-------------------------------------------------------------------------------------------------------------    
-print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
+#print(f'{73 * "-"}\nStarting analysis of mean variable heatmaps \n{73 * "-"}')
 
 def run_traj(df):
     df=dfc.time_bin_var(df)

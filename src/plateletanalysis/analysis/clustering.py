@@ -1,10 +1,9 @@
-from cProfile import label
-from enum import unique
 from sklearn.cluster import DBSCAN
+from sklearn.decomposition import PCA
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -65,7 +64,7 @@ def umap_dbscan_cluster(
         save=None, 
         eps_list=(0.1, .25, 0.5, 0.75, 1), 
         min_samples=5,
-        cols=('frame', 'rho','theta','phi', 'rho_diff', 'theta_diff', 'phi_diff'), 
+        cols=('rho','theta','phi', 'rho_diff', 'theta_diff', 'phi_diff'), 
         frame_range=None, 
         use_checkpoint=False,
         umap_cols=None
@@ -165,7 +164,7 @@ def umap_embedding(
     idxs = sml_df.index.values
     if umap_cols is None:
         # standardise the data to a z score
-        sml_df = StandardScaler().fit_transform(sml_df)
+        sml_df = RobustScaler().fit_transform(sml_df)
         # going to reduce the data using umap
         reducer = umap.UMAP()
         embedding = reducer.fit(sml_df)
@@ -253,6 +252,28 @@ def scatter_by_cluster_2D(df, cluster_col, x_col, y_col, frame_range=(190, 193),
     # good to be able to compar
 
 
+# -----------------
+# PCA Dim Reduction
+# -----------------
+
+
+def PCA_objects(
+    df, 
+    pca_name,
+    cols=('frame', 'rho', 'phi', 'theta', 'rho_diff', 'phi_diff', 'theta_diff')
+    ):
+    sml_df = df[list(cols)]
+    sml_df = sml_df.dropna()
+    idxs = sml_df.index.values
+    sml_df = StandardScaler().fit_transform(sml_df)
+    pca = PCA(n_components=2)
+    pca_results = pca.fit_transform(sml_df)
+    df.loc[idxs, f'PCA_0_{pca_name}'] = pca_results[:, 0]
+    df.loc[idxs, f'PCA_1_{pca_name}'] = pca_results[:, 1]
+    return df, pca
+
+
+
 # ------------------------------
 # Clustering Platelet Properties
 # ------------------------------
@@ -262,17 +283,17 @@ def cluster_platelets_by_kinetic(
         pdf, # df constructed by construct_platelet_df()
         kin_cols=(
             'end_tort', 
-            'c_cont', 
-            'end_track_len', 
-            'end_track_curv',  
+            'sum_cont', 
+            'end_path_len', 
+           # 'end_track_curv',  
             'nrtracks', 
             'start_frame', 
             'start_rho', 
             'start_phi', 
             'start_theta', 
-            'c_phi', 
-            'c_theta', 
-            'c_nb_cont_15' ), 
+            'sum_phi', 
+            'sum_theta', 
+            'sum_nb_cont_15' ), 
         emb_name='kin-0'
     ):
     df = umap_dbscan_cluster(pdf, emb_name, 
@@ -291,77 +312,8 @@ def cluster_platelets_by_kinetic(
 # Helper variable functions
 # -------------------------
 
-def construct_platelet_df(df, cols, save=None):
-    '''
-    Highly inefficient function to generate platelet DF. Will make more efficient only if
-    too time intensive when run. 
-    '''
-    df = df[df['tracked'] == True] # only interested in tracked platelets
-    df_gb = df.groupby(['path', 'particle'])
-    idx = pd.unique(df_gb.index.values)
-    plate_id = range(len(idx))
-    pdf = {
-        'plate_id' : plate_id, 
-        'path' : [i[0] for i in idx], 
-        'particle' : [i[1] for i in idx], 
-        'gbindex' : idx
-        }
-    pdf = pd.DataFrame(pdf)
-    pdf.set_index('gbindex')
-    for col in cols:
-        if col.startswith('c_'):
-            if col not in df.columns.values:
-                bcol = col[2:]
-                df = cumulative_platelet_score(df, bcol)
-                df_gb = df.groupby(['path', 'particle'])
-            sml_df = df_gb[df_gb['terminating'] == True] # each platelet should only have one terminating track
-            c_idxs = sml_df.index.values
-            pdf.loc[c_idxs, col] = sml_df[col].values
-        elif col.startswith('start_'):
-            bcol = col[6:]
-            s_idxs, vals = start_track_value(df, bcol)
-            pdf.loc[s_idxs, col] = vals
-        elif col.startswith('end_'):
-            bcol = col[4:]
-            s_idxs, vals = end_track_value(df, bcol)
-            pdf.loc[s_idxs, col] = vals
-        elif col.startswith('var_'):
-            pass # get varience (need to implement method)
-        else:
-            means = df_gb.mean()
-            m_idxs = means.index.values
-            vals = means[col].values
-            pdf.loc[m_idxs, col] = vals
 
 
-
-def cumulative_platelet_score(df, col):
-    df_gb = df.groupby(['path', 'particle'])
-    idx = pd.unique(df_gb.index.values)
-    df.set_index('pid')
-    for i in idx:
-        sml_df = df_gb[i]
-        sml_df = sml_df.sort_values('frame')
-        result = sml_df[col].cumsum()
-        pids = sml_df['pid'].values
-        df[pids, f'c_{col}']
-    return df
-
-
-def start_track_value(df, col):
-    df_gb = df.groupby(['path', 'particle'])
-    df_gb = df_gb[df_gb['tracknr'] == 1] # each platelet should only have one start track
-    idx = pd.unique(df_gb.index.values)
-    vals = df[col].values
-    return idx, vals
-
-
-def end_track_value(df, col):
-    df_gb = df.groupby(['path', 'particle'])
-    df_gb = df_gb[df_gb['terminating'] == True] # each platelet should only have one terminating track
-    idx = pd.unique(df_gb.index.values)
-    vals = df[col].values
-    return idx, vals
 
 
 # ----------

@@ -51,8 +51,32 @@ def adjust_coordinates(
     return df # superflous return... just to make more readable when used *upside down smiley*
 
 
-def revert_to_pixel_coords(df):
-    pass
+
+def revert_to_pixel_coords(df, meta): # df only for the path with the meta
+    # inverse the rotation (+45 degrees)
+    rot = Rot.from_euler('z', 45, degrees=True)
+    xyz = df[['x_s', 'ys', 'zs']].to_numpy()
+    xyz_rot = rot.apply(xyz)
+    df['x_pixels'] = xyz_rot[:, 0]
+    df['y_pixels'] = xyz_rot[:, 1]
+    df['z_pixels'] = df['zs'].values.copy()
+
+    # add the adjustment value (was initially removed befor rotation)
+    scale = eval(meta.loc[0, 'scale'])
+    adjust_x = meta.loc[0, 'roi_x'] * scale[3]
+    adjust_y = meta.loc[0, 'roi_y'] * scale[2]
+    df['x_pixels'] = df['x_pixels'] + adjust_x 
+    df['y_pixels'] = df['y_pixels'] + adjust_y
+
+    # divide by the scale
+    df['x_pixels'] = df['x_pixels'] / scale[3]
+    df['y_pixels'] = df['y_pixels'] / scale[2]
+    df['z_pixels'] = df['z_pixels'] / scale[1]
+
+    return df
+
+
+
 
 def z_floor(
     df, 
@@ -149,5 +173,5 @@ def _spherical_coord_theta(df):
 
 
 def _spherical_coord_phi(df):
-    phi = np.arctan(df['ys'].values / df['x_s'].values)
+    phi = np.arctan(df['ys'].values / np.abs(df['x_s'].values))
     return pd.DataFrame({'pid' : df['pid'].values, 'phi' : phi})

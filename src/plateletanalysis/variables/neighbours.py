@@ -213,6 +213,38 @@ def _local_density(df, r, z_max, sphere_size, pid):
 
 
 
+def local_mean_calcium(df, r=15):
+    files = pd.unique(df['path'])
+    n_iter = len(df)
+    with tqdm(total=n_iter, desc='Adding neighbour density') as progress:
+        for f in files:
+            f_df = df[df['path'] == f]
+            idxs = f_df.index.values
+            ca_means = []
+            for p in idxs:
+                val = _local_mean_calcium(p, f_df, r)
+                ca_means.append(val)
+            df.loc[idxs, f'nb_ca_{r}'] = ca_means
+
+                
+def _local_mean_calcium(p, f_df, r):
+    row = f_df.loc[p].reset_index()
+    nbs = row.loc[0, f'nb_particles_{r}']
+    nbs = _ensure_list(nbs)
+    t = row.loc[0, 'frame']
+    f_gb = f_df.groupby(['particle', 'frame'])
+    ca_corr = []
+    for n in nbs:
+        idx = (n, t)
+        ca_corr.append(f_gb.loc[idx, 'ca_corr'])
+    ca_mean = np.mean(ca_corr)
+    return ca_mean
+
+
+
+
+
+
 # ----------------------
 # Local Dynamic Measures
 # ----------------------
