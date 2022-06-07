@@ -5,6 +5,12 @@ from sklearn.cluster import DBSCAN
 #from sklearn import metrics
 from scipy import ndimage
 from tqdm import tqdm
+from toolz import curry
+from scipy.stats import percentileofscore, scoreatpercentile
+from scipy.spatial import cKDTree
+import zarr
+from pathlib import Path
+import os
 
 
 
@@ -21,15 +27,32 @@ def platelet_measurments(df):
 
 
 # -------------------
-# Spatial Derivatives
+# Derivative Estimates
 # ------------------- 
 
-def finite_difference_derivatives(df):
+def finite_difference_derivatives(
+    df, 
+    coords=('x_s', 'ys', 'zs'), # can use spherical coordinates here
+    names=('dvx', 'dvy', 'dvz', 'dv') # can name for spherical coordinates
+    ):
+    '''
+    Finite difference estimates of the velocity in 3D. 
+
+    Parameters
+    ----------
+    df: pandas.DataFrame
+        The tracks data
+    coords: 3-tuple of str
+        The names of the columns containing the 3D coordinates
+    names: 4-tuple of str
+        The names of the columns into which to put the coordinate 
+        partial derrivates (indices 0-2) and the 2-norm (index 3)
+    '''
     df = df.sort_values('pid').reset_index()
     dv_df = {
-        'dvx' : np.array([np.nan, ] * len(df)).astype(np.float64),
-        'dvy' : np.array([np.nan, ] * len(df)).astype(np.float64), 
-        'dvz' : np.array([np.nan, ] * len(df)).astype(np.float64),  
+        names[0] : np.array([np.nan, ] * len(df)).astype(np.float64),
+        names[1] : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        names[2] : np.array([np.nan, ] * len(df)).astype(np.float64),  
         'pid' : df.index.values
     }
     files = pd.unique(df['path'])
@@ -42,23 +65,48 @@ def finite_difference_derivatives(df):
                 p_df = img_df[img_df['particle'] == p]
                 p_df = p_df.sort_values('frame')
                 idxs = p_df.index.values
-                dvx = np.append(np.diff(p_df['x_s']), np.nan)
-                dvy = np.append(np.diff(p_df['ys']), np.nan)
-                dvz = np.append(np.diff(p_df['zs']), np.nan)
-                dv_df['dvx'][idxs] = dvx
-                dv_df['dvy'][idxs] = dvy
-                dv_df['dvz'][idxs] = dvz
+                dvx = np.append(np.diff(p_df[coords[0]]), np.nan)
+                dvy = np.append(np.diff(p_df[coords[1]]), np.nan)
+                dvz = np.append(np.diff(p_df[coords[2]]), np.nan)
+                dv_df[names[0]][idxs] = dvx
+                dv_df[names[1]][idxs] = dvy
+                dv_df[names[2]][idxs] = dvz
                 progress.update(1)
     dv_df = pd.DataFrame(dv_df)
     dv_df.reset_index(drop=True)
     df = pd.concat([df, dv_df], axis=1)
-    df['dv']=(df.dvx**2+df.dvy**2+df.dvz**2)**0.5
+    df[names[3]]=(df.dvx**2+df.dvy**2+df.dvz**2)**0.5
     df = df.drop(['pid'], axis=1)
     df['pid'] = range(len(df))
     try:
         df = df.drop(['level_0'], axis=1)
     except:
         pass
+    return df
+
+
+
+def add_finite_diff_derivative(df, col):
+    files = pd.unique(df['path'])
+    n_iter = 0
+    for f in files:
+        f_df = df[df['path'] == f]
+        platelets = pd.unique(df['particle'])
+        n_iter += len(platelets)
+    #df = df.set_index('pid')
+    with tqdm(total=n_iter, desc=f'Adding finite difference derivatives for {col}') as progress:
+        for f in files:
+            file_df = df[df['path'] == f]
+            platelets = pd.unique(df['particle'])
+            for p in platelets:
+                p_df = file_df[file_df['particle'] == p]
+                p_df = p_df.sort_values('frame')
+                idxs = p_df.index.values
+                diff = np.diff(p_df[col].values)
+                diff = np.concatenate([diff, np.array([np.NaN, ])])
+                df.loc[idxs, f'{col}_diff'] = diff
+                progress.update(1)
+    df = df.reset_index()
     return df
 
 
@@ -117,12 +165,10 @@ def _nearest_neighbours_average(pc):
     #print(len(pc))
     p1i=pc.reset_index().pid
     if len(pc)>np.array(nba_list).max():
-        
         dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
         dmap_sorted=np.sort(dmap, axis=0)
         #dmap_idx_sorted=np.argsort(dmap, axis=0)
         for i in nba_list:
-
             nb_dist=(dmap_sorted[1:(i+1),:]).mean(axis=0)
             #nb_idx=dmap_idx_sorted[i+1,:]
             key_dist['nba_d_' + str(i)]=nb_dist
@@ -132,56 +178,9 @@ def _nearest_neighbours_average(pc):
         a = np.empty((len(pc)))
         a[:] = np.nan
         key_dist[('nba_d_' + str(nba_list[0]))]=a
-    
     df=pd.DataFrame(key_dist)
     df=pd.concat([p1i, df], axis=1)
     return df
-
-
-
-# ------
-# DBSCAN
-# ------
-
-def DBSCAN_cluster_1(pc):
-    min_samples=5
-    eps_list=[5,7.5,10,15,20]
-    cl_=[]
-    X=pc[['x_s','ys','zs']].values # 3D
-    for eps in eps_list:
-        # Compute DBSCAN
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        labels = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        cl_.append(pd.DataFrame({('cl_idx_' + str(eps) ) : (labels)}))
-    cl_.append(pc.reset_index().pid)
-    return (pd.concat(cl_, axis=1))
-
-
-def DBSCAN_cluster_2(pc):
-    min_samples=5
-    eps_list=np.arange(3, 31, 2)
-    cl_=[]
-    X=pc[['x_s','ys','zs']].values # 3D
-    for eps in eps_list:
-        # Compute DBSCAN
-        db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        labels = db.labels_
-        # Number of clusters in labels, ignoring noise if present.
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        labels[labels>-1]=eps
-        labels[labels==-1]=42
-        cl_.append(pd.DataFrame({('cl_idx_' + str(eps) ) : (labels)}))
-    cld_grp=pd.concat(cl_, axis=1)
-    cld_grp=pd.DataFrame({('cld' ) : (cld_grp.min(axis=1))})
-    cld_grp['pid']=(pc.reset_index().pid)
-    return (cld_grp)
-
 
 
 # ---------
@@ -354,4 +353,247 @@ def contract(t2):
     t2['cont']=((-t2['x_s'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['x_s'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
     t2['cont_p']=t2.cont/t2.dv
     return pd.DataFrame({'cont' : (t2['cont']), 'cont_p' : (t2['cont_p']), 'pid':t2['pid']})
+
+
+# -----------
+# Path Length
+# -----------
+
+def path_disp_n_tortuosity(df):
+    '''
+    Add the variables path length (path_len), displacement (disp), 
+    '''
+    files = pd.unique(df['path'])
+    for f in files:
+        img_df = df[df['path'] == f]
+        platelets = pd.unique(img_df['particle'])
+        n_iter = len(platelets)
+        with tqdm(total=n_iter, desc=f'Path length, displacement, and, tortuosity for {f}') as progress:
+            for p in platelets:
+                p_df = img_df[img_df['particle'] == p].sort_values(by='frame')
+                idxs = p_df.index.values
+                pathlen = np.cumsum(np.abs(p_df['dv'].values))
+                df.loc[idxs, 'path_len'] = pathlen
+                t0 = p_df['frame'].min()
+                t0_i = p_df[p_df['frame'] == t0].index.values[0]
+                x0, y0, z0 = p_df.loc[t0_i, 'x_s'], p_df.loc[t0_i, 'ys'], p_df.loc[t0_i, 'zs']
+                x_disp = p_df['x_s'] - x0
+                y_disp = p_df['ys'] - y0
+                z_disp = p_df['zs'] - z0
+                disp = ((x_disp ** 2) + (y_disp ** 2) + (z_disp ** 2)) ** 0.5
+                df.loc[idxs, 'disp'] = disp
+                df.loc[idxs, 'tort'] = pathlen / disp
+                progress.update(1)
+    return df
+
+
+
+def platelet_displacement(df):
+    df = df.sort_values('pid').reset_index()
+    d_df = {
+        'disp' : np.array([np.nan, ] * len(df)).astype(np.float64),
+        'disp_sum' : np.array([np.nan, ] * len(df)).astype(np.float64),
+        'tort' : np.array([np.nan, ] * len(df)).astype(np.float64), 
+        'tort_p' : np.array([np.nan, ] * len(df)).astype(np.float64)
+    }
+    files = pd.unique(df['path'])
+    for f in files:
+        img_df = df[df['path'] == f]
+        platelets = pd.unique(img_df['particle'])
+        n_iter = len(platelets)
+        with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
+            for p in platelets:
+                p_displacement_from_tmin1(img_df, p, d_df)
+    d_df = pd.DataFrame(d_df)
+    d_df.reset_index(drop=True)
+    df = pd.concat([df, d_df], axis=1)
+    df = df.drop(['pid'], axis=1)
+    df['pid'] = range(len(df))
+    try:
+        df = df.drop(['level_0'], axis=1)
+    except:
+        pass
+    return df
+
+
+def p_displacement_from_tmin1(df, particle, d_df):
+    p_df = df[df['particle'] == particle]
+    p_df = p_df.sort_values('frame')
+    idxs = p_df.index.values
+    dx = np.append(np.diff(0., p_df['x_s']))
+    dy = np.append(np.diff(0., p_df['ys']))
+    dz = np.append(np.diff(0., p_df['zs']))
+    disp = ((dx ** 2) + (dy ** 2) + (dz ** 2)) ** 0.5
+    disp_sum = np.cumsum(disp)
+    tort = disp_sum / d_df['dist_c'].values
+    tort_p = disp_sum[-1] / d_df['dist_c'].values[-1]
+    tort_p = tort_p * len(disp)
+    d_df.loc['disp', idxs] = disp
+    d_df.loc['disp_sum', idxs] = disp_sum
+    d_df.loc['tort', idxs] = tort
+    d_df.loc['tort_p', idxs] = tort_p
+
+
+
+# -------------
+# thromus percentile
+# -------------
+
+def find_clot_percentile_structure(
+        df, 
+        u_percentiles=(99, 95, 90, 80, 70, 60), 
+        l_percentiles=(1, 5, 10, 20, 30, 40) 
+    ):
+    '''
+    for each clot, find x-y coordinates of each 
+    '''
+    files = pd.unique(df['path'])
+    percentiles = 100 - (np.array(l_percentiles) * 2)
+    angles = np.linspace(0, np.pi, 100)
+    results = {
+        'path' : [],
+        #'frame' : [],
+        'zs' : [], 
+        'ys' : [], 
+        'x_s' : [], 
+        'rotation' : [], 
+        'percentile' : []
+    }
+    frames = pd.unique(df['frame'])
+    #z_levels = pd.unique(df['zs'])
+    z_levels = np.linspace(0, 64, 10)
+    n_iter = len(files) * len(z_levels) * len(angles) # * len(frames)
+    with tqdm(total=n_iter) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            #frames = pd.unique(fdf['frame'])
+            #for t in frames:
+                #tdf = fdf[fdf['frame'] == t]
+            z_max = fdf['zs'].max()
+            z_levels = np.linspace(0, z_max, 10)
+            for i in range(len(z_levels) - 1):
+                z = (z_levels[i] + z_levels[i + 1]) / 2
+                zdf = fdf[(fdf['zs'] >= z_levels[i]) & (fdf['zs'] <= z_levels[i + 1])]
+                zdf = zdf.sort_values(by='x_s')
+                xs = zdf['x_s'].values
+                ys = zdf['ys'].values
+                if len(xs > 0):
+                    for rot in angles:
+                        new_xs, new_ys = rotate(xs, ys, rot)
+                        lower = np.percentile(new_xs, l_percentiles)
+                        upper = np.percentile(new_xs, u_percentiles)
+                        # need to figure out how to transform back into original xy
+                        # x = r cos theta « where r is the val for the percentile in rotated space
+                        xl = lower * np.cos(rot)
+                        xu = upper * np.cos(rot)
+                        # y = r sin theta « and theta is the rotation angle in rad
+                        yl = lower * np.sin(rot)
+                        yu = upper * np.sin(rot)
+                        # add the data
+                        for i in range(len(xu)):
+                            results['path'].append(f)
+                            #results['frame'] = t
+                            results['zs'].append(z)
+                            results['ys'].append(yu[i])
+                            results['x_s'].append(xu[i])
+                            results['rotation'].append(rot)
+                            results['percentile'].append(percentiles[i])
+                        for i in range(len(xl)):
+                            results['path'].append(f)
+                            #results['frame'] = t
+                            results['zs'].append(z)
+                            results['ys'].append(yl[i])
+                            results['x_s'].append(xl[i])
+                            results['rotation'].append(rot + np.pi)
+                            results['percentile'].append(percentiles[i])
+                progress.update(1)
+    results = pd.DataFrame(results)
+    return results
+
+
+def rotate(x, y, rot):
+    xs = x * np.cos(rot) - y * np.sin(rot)
+    ys = x * np.sin(rot) + y * np.cos(rot)  
+    return xs, ys
+
+
+def find_density_percentiles_img(
+        df, 
+        k=3, 
+        eps=2, 
+        save=None,
+    ):
+    files = pd.unique(df['path'])
+    images = []
+    t = df['frame'].max()
+    z = np.round(df['zs'].max()).astype(int)
+    y_min = df['ys'].min()
+    y = np.round(df['ys'].max() - y_min).astype(int)
+    x_min = df['x_s'].min()
+    x = np.round(df['x_s'].max()- x_min).astype(int)
+    with tqdm(total=len(files) * t) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            idxs = fdf.index.values
+            densities = fdf['nb_density_15']
+            percentiles = np.array([percentileofscore(densities, d) for d in densities])
+            df.loc[idxs, 'nd15_percentile'] = percentiles
+            fdf = df[df['path'] == f]
+            img = np.zeros((t, z, y, x))
+            for t_ in range(t):
+                tdf = fdf[fdf['frame'] == t_]
+                idxs = tdf.index.values
+                coords = tdf[['zs', 'ys', 'x_s']].values
+                coords = cKDTree(coords) # cKDTree
+                for z_ in range(z):
+                    for y_ in range(y):
+                        for x_ in range(x):
+                            # interpolate the density percentile by finding the nearest platelets (prob CKD tree)
+                            yy = y_ + y_min
+                            xx = x_ + x_min
+                            dd, ii = coords.query([z_, yy, xx], k=k, eps=eps)
+                            idx = idxs[ii]
+                            dd = dd / np.sum(dd) 
+                            dd = 1 - dd # get the weight of the neighbour
+                            nb_pct = tdf.loc[idx, 'nd15_percentile'].values
+                            percentile = np.sum(dd * nb_pct)
+                            if percentile > 2:
+                                img[t_, z_, y_, x_] = percentile
+            progress.update(1)
+        images.append(img)
+    images = np.stack(images)
+    if save is not None:
+        sn = Path(save).stem
+        sdir = Path(save).parents[0]
+        save_order = os.path.join(sdir, sn)
+        zarr.save(save)
+        with open(save_order, 'w') as f:
+            f.write(str(files))
+    return df, images
+    
+
+
+def find_density_percentiles(
+        df, 
+        k=3, 
+        eps=2, 
+        save=None,
+    ):
+    files = pd.unique(df['path'])
+    images = []
+    t = df['frame'].max()
+    z = np.round(df['zs'].max()).astype(int)
+    y_min = df['ys'].min()
+    y = np.round(df['ys'].max() - y_min).astype(int)
+    x_min = df['x_s'].min()
+    x = np.round(df['x_s'].max()- x_min).astype(int)
+    with tqdm(total=len(files)) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            idxs = fdf.index.values
+            densities = fdf['nb_density_15']
+            percentiles = np.array([percentileofscore(densities, d) for d in densities])
+            df.loc[idxs, 'nd15_percentile'] = percentiles
+            progress.update(1)
+    return df
 
