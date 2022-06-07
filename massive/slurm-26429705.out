@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/fs02/rl54/Abi/platelet-analysis/massive/add_vars.py", line 1, in <module>
+    from plateletanalysis.variables.neighbours import add_neighbour_lists, local_density, local_contraction
+  File "/fs02/rl54/Abi/platelet-analysis/src/plateletanalysis/variables/neighbours.py", line 7, in <module>
+    from distributed import Client, as_completed
+ModuleNotFoundError: No module named 'distributed'

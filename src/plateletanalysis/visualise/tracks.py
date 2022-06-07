@@ -50,7 +50,7 @@ def display_all_tracks(df):
     for f in files:
         f_df = df[df['path'] == f]
         tracks = get_tracks(f_df, ('particle', 'frame', 'zs', 'ys', 'x_s'))
-        v.add_tracks(tracks, properties=f_df, name=f)
+        v.add_tracks(tracks, properties=f_df, name=f, visible=False)
     napari.run()
 
 

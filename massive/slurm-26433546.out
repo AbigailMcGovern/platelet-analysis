@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/fs02/rl54/Abi/platelet-analysis/massive/add_vars.py", line 17, in <module>
+    df = pd.read_parquet(sp)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/parquet.py", line 493, in read_parquet
+    return impl.read(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/parquet.py", line 233, in read
+    path_or_handle, handles, kwargs["filesystem"] = _get_path_or_handle(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/parquet.py", line 102, in _get_path_or_handle
+    handles = get_handle(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/common.py", line 798, in get_handle
+    handle = open(handle, ioargs.mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/fs02/rl54/dataframes/220603_211206_biva_df_spherical-coords.parquet'

@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
-
+import os
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # import matplotlib.pyplot as plt
 # df_gb = df.groupby(['path', 'frame']).mean()
@@ -106,6 +107,31 @@ def basic_scatter(df, x_col, y_col, c_col, v_min=None, v_max=None):
     plt.colorbar()
     plt.title(c_col)
     plt.show()
+
+
+
+def basic_scatter_save(df, x_col, y_col, c_col, save_path, size=(10, 10)):
+    fig, ax = plt.subplots()
+    im = ax.scatter(df[x_col], df[y_col], s=1, c=df[c_col])
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    ax.set_title(c_col)
+    fig.set_size_inches(size[0], size[1])
+    fig.savefig(save_path)
+    plt.close(fig)
+
+
+
+def multi_basic_scatter_save(df, x_col, y_col, c_cols, save_dir, plot_type='UMAP-DBSCAN', size=(10, 10)):
+    for col in c_cols:
+        n = f'{plot_type}_{col}.pdf'
+        sp = os.path.join(save_dir, n)
+        basic_scatter_save(df, x_col, y_col, col, sp, size=size)
+
+
 
     # scatter @ over a select number of frames
 

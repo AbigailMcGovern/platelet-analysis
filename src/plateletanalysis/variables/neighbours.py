@@ -256,6 +256,35 @@ def _local_mean_calcium(p, f_df, r):
 # Embolism Events
 # ---------------
 
+
+def embolysis(df, r_emb=10, min_tracks=5, n_frames=1):
+    df = df[df['frame'] >= min_tracks]
+    if 'terminating' not in df.columns.values:
+        df['terminating'] = df['tracknr'] == df['nrtracks']
+    # represent the terminating platelets as a cKDTree
+    term = df[df['terminating'] == True]
+    idxs = term.index.values
+    term['frame'] = (term['frame'] * r_emb) / n_frames
+    term = df[['frame', 'x_s', 'ys', 'zs']].values
+    term_tree_0 = cKDTree(term)
+    term_tree_1 = cKDTree(term.copy())
+    sdm = term_tree_0.sparse_distance_matrix(term_tree_1, r_emb)
+    array = sdm.toarray()
+    for p in range(array.shape[0]):
+        # get the non zero values for the platelet
+        p_dists = array[p, :]
+        p_idxs = np.where(p_dists > 0) # indicies to find pid
+        keep = idxs[p_idxs] # pids that should be kept
+        disps = list(p_dists[p_idxs])
+        # add to the data frame
+        pidx = idxs[p]
+        nb_ps = list(f_df.loc[keep, 'particle'])
+        nb_df.loc[pidx, f'nb_particles_{max_dist}'] = str(nb_ps)
+        nb_df.loc[pidx, f'nb_disp_{max_dist}'] = str(disps)
+
+
+
+
 def embolysis(df, r_emb=10):
     emb_df = {
         'emb_nbs' : [None, ] * len(df), 

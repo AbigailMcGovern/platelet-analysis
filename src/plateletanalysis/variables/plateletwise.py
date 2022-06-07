@@ -1,12 +1,14 @@
 import pandas as pd
 import numpy as np
-
+from tqdm import tqdm
+import os
 
 
 
 
 def construct_platelet_df(
     df, 
+    save,
     cols=(
         'mean_phi', 
         'mean_theta', 
@@ -18,9 +20,9 @@ def construct_platelet_df(
         'mean_ys', 
         'mean_zs', 
         'mean_dv', 
-        'mean_dx', 
-        'mean_dy', 
-        'mean_dz', 
+        'mean_dvx', 
+        'mean_dvy', 
+        'mean_dvz', 
         'mean_ca_corr', 
         'mean_elong', 
         'mean_flatness', 
@@ -36,9 +38,9 @@ def construct_platelet_df(
         'var_ys', 
         'var_zs', 
         'var_dv', 
-        'var_dx', 
-        'var_dy', 
-        'var_dz', 
+        'var_dvx', 
+        'var_dvy', 
+        'var_dvz', 
         'var_ca_corr', 
         'start_frame', 
         'start_rho', 
@@ -49,51 +51,74 @@ def construct_platelet_df(
         'end_theta', 
         'end_path_len', 
         'end_disp', 
-        'end_tort'
+        'end_tort', 
+        'end_frame', 
+        'mean_nb_density_15',
+        'var_nb_density_15',
+        'mean_n_neighbours', 
+        'var_n_neighbours', 
+        'start_nrtracks', 
+        'mean_stab', 
+        'var_stab', 
     ), 
-    save=None):
+    ):
     '''
     Highly inefficient function to generate platelet DF. Will make more efficient only if
     too time intensive when run. 
     '''
     df = df[df['tracked'] == True] # only interested in tracked platelets
-    df_gb = df.groupby(['path', 'particle'])
+    #df_gb = df.groupby(['path', 'particle'])
+    df_gb = df.set_index(['path', 'particle']).sort_index()
     idx = pd.unique(df_gb.index.values)
-    plate_id = range(len(idx))
-    pdf = {
-        'plate_id' : plate_id, 
-        'path' : [i[0] for i in idx], 
-        'particle' : [i[1] for i in idx], 
-        'gbindex' : idx
-        }
-    pdf = pd.DataFrame(pdf)
-    pdf.set_index('gbindex')
-    for col in cols:
-        first_val = df_gb.loc[idx[0], col]
-        if col.startswith('sum_'):
-            bcol = col[4:]
-            idxs, vals = cumulative_platelet_score(df_gb, col)
-            pdf.loc[idxs, col] = vals
-        elif col.startswith('start_'):
-            bcol = col[6:]
-            idxs, vals = start_track_value(df_gb, bcol)
-            pdf.loc[idxs, col] = vals
-        elif col.startswith('end_'):
-            bcol = col[4:]
-            idxs, vals = end_track_value(df_gb, bcol)
-            pdf.loc[idxs, col] = vals
-        elif col.startswith('var_'):
-            bcol = col[4:]
-            idxs, vals = track_varience(df_gb, bcol)
-            pdf.loc[idxs, col] = vals
-        elif col.startswith('mean_'):
-            bcol = col[5:]
-            means = df_gb.mean()
-            idxs = means.index.values
-            pdf.loc[idxs, col] = means
-        else:
-            idxs, vals = catagorical_vars(df_gb, col)
-            pdf.loc[idxs, col] = vals
+    if not os.path.exists(save):
+        plate_id = range(len(idx))
+        pdf = {
+            'plate_id' : plate_id, 
+            'path' : [i[0] for i in idx], 
+            'particle' : [i[1] for i in idx], 
+            }
+        pdf = pd.DataFrame(pdf)
+    else:
+        pdf = pd.read_parquet(save)
+    pdf = pdf.set_index(['path', 'particle'])
+    cols = [c for c in cols if c not in pdf.columns.values]
+    n_iter = len(idx) * len(cols)
+    with tqdm(total=n_iter) as progress:
+        for i in idx:
+            idf = df_gb.loc[i, :]
+            for col in cols:
+                if col.startswith('sum_'):
+                    bcol = col[4:]
+                    val = idf[bcol].sum()
+                    pdf.loc[i, col] = val
+                    progress.update(1)
+                elif col.startswith('start_'):
+                    bcol = col[6:]
+                    val = start_track_value(idf, bcol, i)
+                    pdf.loc[i, col] = val
+                    progress.update(1)
+                elif col.startswith('end_'):
+                    bcol = col[4:]
+                    val = end_track_value(idf, bcol, i)
+                    pdf.loc[i, col] = val
+                    progress.update(1)
+                elif col.startswith('var_'):
+                    bcol = col[4:]
+                    val = track_varience(idf, bcol, i)
+                    pdf.loc[i, col] = val
+                    progress.update(1)
+                elif col.startswith('mean_'):
+                    bcol = col[5:]
+                    mean = idf[bcol].mean()
+                    pdf.loc[i, col] = mean
+                    progress.update(1)
+                #else:
+                 #   idxs, vals = catagorical_vars(df_gb, col)
+                  #  pdf.loc[idxs, col] = vals
+                   # progress.update(1)
+        if save is not None:
+            cpdf = pdf.reset_index()
+            cpdf.to_parquet(save)
     pdf = pdf.reset_index()
     if save is not None:
         pdf.to_parquet(save)
@@ -101,35 +126,36 @@ def construct_platelet_df(
 
 
 
-def cumulative_platelet_score(df_gb, col):
+def start_track_value(idf, col, idx):
     #df_gb = df.groupby(['path', 'particle'])
-    idx = pd.unique(df_gb.index.values)
-    vals = df_gb[col].sum()
-    return idx, vals
+    df = idf[idf['tracknr'] == 1] # each platelet should only have one start track
+    try:
+        assert len(df) == 1
+        val = df[col].sum()
+    except:
+        print(f'{idx} has no start track... adding NaN')
+        val = np.NaN
+    return val
 
 
-def start_track_value(df_gb, col):
+def end_track_value(idf, col, idx):
     #df_gb = df.groupby(['path', 'particle'])
-    df_gb = df_gb[df_gb['tracknr'] == 1] # each platelet should only have one start track
-    idx = pd.unique(df_gb.index.values)
-    vals = df[col].values
-    return idx, vals
+    df = idf[idf['terminating'] == True] # each platelet should only have one terminating track
+    try:
+        assert len(df) == 1
+        val = df[col].sum()
+    except:
+        print(f'{idx} has no start track... adding NaN')
+        val = np.NaN
+    return val
 
 
-def end_track_value(df_gb, col):
+def track_varience(idf, col, idx):
     #df_gb = df.groupby(['path', 'particle'])
-    df_gb = df_gb[df_gb['terminating'] == True] # each platelet should only have one terminating track
-    idx = pd.unique(df_gb.index.values)
-    vals = df[col].values
-    return idx, vals
-
-
-def track_varience(df_gb, col):
-    #df_gb = df.groupby(['path', 'particle'])
-    idx = pd.unique(df_gb.index.values)
-    sem = df_gb[col].sem
-    vals = sem ** 2
-    return idx, vals
+    sem = idf[col].sem()
+    sem = np.array(sem)
+    val = sem ** 2
+    return val
 
 
 def catagorical_vars(df_gb, col): 
@@ -144,3 +170,17 @@ def catagorical_vars(df_gb, col):
     return idx, vals
 
 
+# ------------
+# Rolling mean
+# ------------
+
+def rolling_mean(df, col, w=3):
+    paths = pd.unique(df['path'])
+    for p in paths:
+        pdf = df[df['path'] == p]
+        particles = pd.unique(pdf['particle'])
+        for pa in particles:
+            padf = pdf[pdf['particle'] == pa]
+            padf = padf.sort_values(by='frame')
+            idxs = padf.index.values
+            df.loc[idxs, col]

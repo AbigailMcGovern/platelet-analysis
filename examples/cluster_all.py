@@ -45,6 +45,7 @@ df = pd.read_parquet(sp)
 # REMOVE OUTLIER FILE
 df = df[df['path'] != '200527_IVMTR73_Inj2_saline_exp3']
 sp = os.path.join(d, '211206_saline_df_spherical-coords_220527_0.parquet')
+df = df[df['nrtracks'] > 2]
 
 
 # umap dbscan and save 

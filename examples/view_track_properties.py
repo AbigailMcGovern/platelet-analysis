@@ -29,4 +29,4 @@ nsp = os.path.join(d, '210920_141056_seg-track_200527_IVMTR73_Inj4_saline_exp3_f
 new_df.to_parquet(nsp)
 
 # look at the tracks with the newly computed properties
-#display_tracks_and_properties(new_df, images, scale=(1, 4, 1, 1))
+display_tracks_and_properties(new_df, images, scale=(1, 4, 1, 1))

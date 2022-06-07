@@ -6,6 +6,11 @@ from sklearn.cluster import DBSCAN
 from scipy import ndimage
 from tqdm import tqdm
 from toolz import curry
+from scipy.stats import percentileofscore, scoreatpercentile
+from scipy.spatial import cKDTree
+import zarr
+from pathlib import Path
+import os
 
 
 
@@ -363,9 +368,9 @@ def path_disp_n_tortuosity(df):
         img_df = df[df['path'] == f]
         platelets = pd.unique(img_df['particle'])
         n_iter = len(platelets)
-        with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
+        with tqdm(total=n_iter, desc=f'Path length, displacement, and, tortuosity for {f}') as progress:
             for p in platelets:
-                p_df = img_df[img_df['particle'] == p]
+                p_df = img_df[img_df['particle'] == p].sort_values(by='frame')
                 idxs = p_df.index.values
                 pathlen = np.cumsum(np.abs(p_df['dv'].values))
                 df.loc[idxs, 'path_len'] = pathlen
@@ -379,7 +384,7 @@ def path_disp_n_tortuosity(df):
                 df.loc[idxs, 'disp'] = disp
                 df.loc[idxs, 'tort'] = pathlen / disp
                 progress.update(1)
-        return df
+    return df
 
 
 
@@ -429,4 +434,166 @@ def p_displacement_from_tmin1(df, particle, d_df):
     d_df.loc['tort_p', idxs] = tort_p
 
 
+
+# -------------
+# thromus percentile
+# -------------
+
+def find_clot_percentile_structure(
+        df, 
+        u_percentiles=(99, 95, 90, 80, 70, 60), 
+        l_percentiles=(1, 5, 10, 20, 30, 40) 
+    ):
+    '''
+    for each clot, find x-y coordinates of each 
+    '''
+    files = pd.unique(df['path'])
+    percentiles = 100 - (np.array(l_percentiles) * 2)
+    angles = np.linspace(0, np.pi, 100)
+    results = {
+        'path' : [],
+        #'frame' : [],
+        'zs' : [], 
+        'ys' : [], 
+        'x_s' : [], 
+        'rotation' : [], 
+        'percentile' : []
+    }
+    frames = pd.unique(df['frame'])
+    #z_levels = pd.unique(df['zs'])
+    z_levels = np.linspace(0, 64, 10)
+    n_iter = len(files) * len(z_levels) * len(angles) # * len(frames)
+    with tqdm(total=n_iter) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            #frames = pd.unique(fdf['frame'])
+            #for t in frames:
+                #tdf = fdf[fdf['frame'] == t]
+            z_max = fdf['zs'].max()
+            z_levels = np.linspace(0, z_max, 10)
+            for i in range(len(z_levels) - 1):
+                z = (z_levels[i] + z_levels[i + 1]) / 2
+                zdf = fdf[(fdf['zs'] >= z_levels[i]) & (fdf['zs'] <= z_levels[i + 1])]
+                zdf = zdf.sort_values(by='x_s')
+                xs = zdf['x_s'].values
+                ys = zdf['ys'].values
+                if len(xs > 0):
+                    for rot in angles:
+                        new_xs, new_ys = rotate(xs, ys, rot)
+                        lower = np.percentile(new_xs, l_percentiles)
+                        upper = np.percentile(new_xs, u_percentiles)
+                        # need to figure out how to transform back into original xy
+                        # x = r cos theta « where r is the val for the percentile in rotated space
+                        xl = lower * np.cos(rot)
+                        xu = upper * np.cos(rot)
+                        # y = r sin theta « and theta is the rotation angle in rad
+                        yl = lower * np.sin(rot)
+                        yu = upper * np.sin(rot)
+                        # add the data
+                        for i in range(len(xu)):
+                            results['path'].append(f)
+                            #results['frame'] = t
+                            results['zs'].append(z)
+                            results['ys'].append(yu[i])
+                            results['x_s'].append(xu[i])
+                            results['rotation'].append(rot)
+                            results['percentile'].append(percentiles[i])
+                        for i in range(len(xl)):
+                            results['path'].append(f)
+                            #results['frame'] = t
+                            results['zs'].append(z)
+                            results['ys'].append(yl[i])
+                            results['x_s'].append(xl[i])
+                            results['rotation'].append(rot + np.pi)
+                            results['percentile'].append(percentiles[i])
+                progress.update(1)
+    results = pd.DataFrame(results)
+    return results
+
+
+def rotate(x, y, rot):
+    xs = x * np.cos(rot) - y * np.sin(rot)
+    ys = x * np.sin(rot) + y * np.cos(rot)  
+    return xs, ys
+
+
+def find_density_percentiles_img(
+        df, 
+        k=3, 
+        eps=2, 
+        save=None,
+    ):
+    files = pd.unique(df['path'])
+    images = []
+    t = df['frame'].max()
+    z = np.round(df['zs'].max()).astype(int)
+    y_min = df['ys'].min()
+    y = np.round(df['ys'].max() - y_min).astype(int)
+    x_min = df['x_s'].min()
+    x = np.round(df['x_s'].max()- x_min).astype(int)
+    with tqdm(total=len(files) * t) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            idxs = fdf.index.values
+            densities = fdf['nb_density_15']
+            percentiles = np.array([percentileofscore(densities, d) for d in densities])
+            df.loc[idxs, 'nd15_percentile'] = percentiles
+            fdf = df[df['path'] == f]
+            img = np.zeros((t, z, y, x))
+            for t_ in range(t):
+                tdf = fdf[fdf['frame'] == t_]
+                idxs = tdf.index.values
+                coords = tdf[['zs', 'ys', 'x_s']].values
+                coords = cKDTree(coords) # cKDTree
+                for z_ in range(z):
+                    for y_ in range(y):
+                        for x_ in range(x):
+                            # interpolate the density percentile by finding the nearest platelets (prob CKD tree)
+                            yy = y_ + y_min
+                            xx = x_ + x_min
+                            dd, ii = coords.query([z_, yy, xx], k=k, eps=eps)
+                            idx = idxs[ii]
+                            dd = dd / np.sum(dd) 
+                            dd = 1 - dd # get the weight of the neighbour
+                            nb_pct = tdf.loc[idx, 'nd15_percentile'].values
+                            percentile = np.sum(dd * nb_pct)
+                            if percentile > 2:
+                                img[t_, z_, y_, x_] = percentile
+            progress.update(1)
+        images.append(img)
+    images = np.stack(images)
+    if save is not None:
+        sn = Path(save).stem
+        sdir = Path(save).parents[0]
+        save_order = os.path.join(sdir, sn)
+        zarr.save(save)
+        with open(save_order, 'w') as f:
+            f.write(str(files))
+    return df, images
+    
+
+
+def find_density_percentiles(
+        df, 
+        k=3, 
+        eps=2, 
+        save=None,
+    ):
+    files = pd.unique(df['path'])
+    images = []
+    t = df['frame'].max()
+    z = np.round(df['zs'].max()).astype(int)
+    y_min = df['ys'].min()
+    y = np.round(df['ys'].max() - y_min).astype(int)
+    x_min = df['x_s'].min()
+    x = np.round(df['x_s'].max()- x_min).astype(int)
+    with tqdm(total=len(files)) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            idxs = fdf.index.values
+            densities = fdf['nb_density_15']
+            percentiles = np.array([percentileofscore(densities, d) for d in densities])
+            df.loc[idxs, 'nd15_percentile'] = percentiles
+            progress.update(1)
+    return df
 

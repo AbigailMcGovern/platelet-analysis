@@ -4,10 +4,14 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.manifold import TSNE
 import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
 import random
+from scipy.stats import pearsonr
+import seaborn as sns
+
 
 # ---------------------------
 # Clustering Kinetic Profiles
@@ -179,6 +183,30 @@ def umap_embedding(
     return df, embedding, idxs
 
 
+# ------------------
+# tSNE dim reduction
+# ------------------
+
+def tsne_embedding(
+    df, 
+    emb_name, 
+    save=None, 
+    cols=['rho','theta','phi', 'rho_diff', 'theta_diff', 'phi_diff'],
+    umap_cols=None
+    ):
+    sml_df = df[list(cols)]
+    sml_df = sml_df.dropna()
+    idxs = sml_df.index.values
+    sml_df = sml_df.values
+    embedding = TSNE(n_components=2, learning_rate='auto',
+                      init='random').fit_transform(sml_df)
+    df.loc[idxs, f'tsne_0_{emb_name}'] = embedding[:, 0]
+    df.loc[idxs, f'tsne_1_{emb_name}'] = embedding[:, 1]
+    if save is not None:
+        df.to_parquet(save)
+    return df
+
+
 # --------
 # Plotting
 # --------
@@ -186,63 +214,58 @@ def umap_embedding(
 def plot_clusters(
         df, 
         cluster_col, 
-        umap_cols=None, 
+        umap_cols, 
         embedding_cols=['rho','theta','phi', 'rho_diff', 'theta_diff', 'phi_diff'], 
         embedding_name='scoords',
         frac=1, 
-        frame_range=(0, 194)):
+        frame_range=None, 
+        save=None, 
+        size=(10, 10), 
+        show=True
+        ):
     '''
     Plot clusters on a umap
     '''
-    if umap_cols is None:
-        try:
-            df = df.set_index('pid')
-        except KeyError:
-            df['pid'] = range(len(df))
-            df = df.set_index('pid')
-        cols = embedding_cols
-        sml_df = df[cols]
-        sml_df = sml_df.dropna()
-        idxs = sml_df.index.values
-        # standardise the data to a z score
-        sml_df = StandardScaler().fit_transform(sml_df)
-        # going to reduce the data using umap
-        reducer = umap.UMAP()
-        embedding = reducer.fit(sml_df)
-        embedding = embedding.embedding_
-        df.loc[idxs, f'umap_0_{embedding_name}'] = embedding[:, 0]
-        df.loc[idxs, f'umap_1_{embedding_name}'] = embedding[:, 1]
-        umap_cols = [f'umap_0_{embedding_name}', f'umap_1_{embedding_name}']
-        del sml_df
-    sub_df = df[(df['frame'] >= frame_range[0]) & (df['frame'] < frame_range[1])]
+    # subsample if necessary
+    sub_df = df
+    if frame_range is not None:
+        sub_df = df[(df['frame'] >= frame_range[0]) & (df['frame'] < frame_range[1])]
     if frac < 1:
         sub_df = sub_df.sample(frac=frac)
-    labels = sub_df[cluster_col].values
+    labels = pd.unique(sub_df[cluster_col])
+    # colour maps for clusters
     try:
-        c_map = [sns.color_palette()[int(label)] for label in labels]
+        c_map = {
+            l : sns.color_palette()[int(l)] for l in labels
+        }
     except IndexError:
-        import matplotlib.colors as mcolours
-        colours = [n for n, c in mcolours.CSS4_COLORS.items()]
-        colours = [col for col in colours if 'white' not in col and 'gray' not in col]
-        random.shuffle(colours)
-        c_map = [colours[int(label)] for label in labels]
-    plt.scatter(
+        col_labs = sub_df[cluster_col].value_counts().index.values[:10]
+        other_labs = sub_df[cluster_col].value_counts().index.values[10:]
+        cols = [sns.color_palette()[i] for i in range(10)]
+        c_map = cmap_dict(col_labs, cols, other_labs, other_col='lightgray')
+    # plotting
+    fig, ax = plt.subplots()
+    ax.scatter(
         sub_df[umap_cols[0]].values, 
         sub_df[umap_cols[1]].values, 
-        c=c_map, s=1)
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(f'UMAP projection of platelets clustered according to {embedding_name}', fontsize=18)
-    plt.show()
-    df.reset_index()
+        c=sub_df[cluster_col].map(c_map), s=1)
+    #ax.title(f'UMAP projection of platelets clustered according to {embedding_name}', fontsize=18)
+    fig.set_size_inches(size[0], size[1])
+    # save if necessary
+    if save is not None:
+        fig.savefig(save)
+    # show if required
+    if show:
+        plt.show()
     return df
 
-    # im not totally sure how to display this. 
-    # I can use a umap to reduce the data to two dimensions to give the viewer a visual intuition
-    # I think it might also be useful to plot the clusters on 2D cross sections
 
-    # may need to take a random sample of points to reduce the total number of data points (there are too many to display confortably)
-    # could display points across a number of frames or at a single time frame
-    # random sub-sampling probably necessary 
+
+def cmap_dict(vals, cols, other_vals, other_col='lightgray'):
+    cmap = {vals[i] : cols[i] for i in range(len(vals))}
+    for v in other_vals:
+        cmap[v] = other_col
+    return cmap
 
 
 
@@ -272,6 +295,89 @@ def PCA_objects(
     df.loc[idxs, f'PCA_1_{pca_name}'] = pca_results[:, 1]
     return df, pca
 
+
+def PCA_all(
+    df, 
+    cols
+    ):
+    sml_df = df[list(cols)]
+    sml_df = sml_df.dropna()
+    idxs = sml_df.index.values
+    sml_df = StandardScaler().fit_transform(sml_df)
+    pca = PCA()
+    pca_results = pca.fit_transform(sml_df)
+    plt.plot(np.cumsum(pca.explained_variance_ratio_))
+    plt.xlabel('number of components')
+    plt.ylabel('cumulative explained variance')
+    plt.show()
+    return pca
+
+
+def PCA_corr(
+    df, 
+    cols, 
+    save
+    ):
+    cols = list(cols)
+    sml_df = df[cols]
+    sml_df = sml_df.dropna()
+    sml_df = StandardScaler().fit_transform(sml_df)
+    pca = PCA()
+    pca_results = pca.fit_transform(sml_df)
+    results = {
+        'variables' : cols
+    }
+    n_iter = len(cols)
+    with tqdm(total=n_iter) as progress:
+        for comp in range(pca_results.shape[1]):
+            nr = f'PC_{comp}_r'
+            np = f'PC_{comp}_p'
+            rs = []
+            ps = []
+            for col in cols:
+                r, p = pearsonr(df[col].values, pca_results[:, comp])
+                rs.append(r)
+                ps.append(p)
+            results[nr] = rs
+            results[np] = ps
+            progress.update(1)
+    results = pd.DataFrame(results)
+    results.to_csv(save)
+    plt.bar(range(len(pca.explained_variance_ratio_)), pca.explained_variance_ratio_)
+    plt.show()
+
+
+
+def cross_corr(df, cols, save):
+    n_iter = len(cols)
+    results = {
+        'variables' : cols
+    }
+    heatmap = {
+        'variables' : cols
+    }
+    with tqdm(total=n_iter) as progress:
+        for i, col in enumerate(cols):
+            n_r = f'{col}_r'
+            n_p = f'{col}_p'
+            rs = []
+            ps = []
+            for c in cols:
+                r, p = pearsonr(df[col].values, df[c].values)
+                rs.append(r)
+                ps.append(p)
+            results[n_r] = rs
+            results[n_p] = ps
+            heatmap[col] = rs
+            progress.update(1)
+    results = pd.DataFrame(results)
+    results.to_csv(save)
+    heatmap = pd.DataFrame(heatmap)
+    heatmap = heatmap.set_index('variables')
+    matrix = np.triu(heatmap.values)
+    ax = sns.heatmap(heatmap, annot=True,  linewidths=.5, cmap="vlag", vmin=-1, vmax=1, mask=matrix)
+    plt.show()
+    
 
 
 # ------------------------------
