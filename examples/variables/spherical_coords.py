@@ -26,7 +26,7 @@ for f in files:
     sp = os.path.join(d, f)
     df = pd.read_parquet(sp)
     df = df.drop(columns=['rho_diff', 'theta_diff', 'phi_diff'])
-    #df = spherical_coordinates(df)
+    df = spherical_coordinates(df)
     #n = Path(sp).stem + '_spherical-coords.parquet'
     #sp = os.path.join(d, n)
     #df.to_parquet(sp)

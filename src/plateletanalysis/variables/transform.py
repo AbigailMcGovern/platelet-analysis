@@ -52,26 +52,45 @@ def adjust_coordinates(
 
 
 
-def revert_to_pixel_coords(df, meta): # df only for the path with the meta
-    # inverse the rotation (+45 degrees)
-    rot = Rot.from_euler('z', 45, degrees=True)
-    xyz = df[['x_s', 'ys', 'zs']].to_numpy()
-    xyz_rot = rot.apply(xyz)
-    df['x_pixels'] = xyz_rot[:, 0]
-    df['y_pixels'] = xyz_rot[:, 1]
-    df['z_pixels'] = df['zs'].values.copy()
+def revert_to_pixel_coords(df, meta_dfs): 
+    for meta in meta_dfs:
+        p = meta.loc[0, 'file']
+        fdf = df[df['path'] == p]
+        idxs = fdf.index.values
 
-    # add the adjustment value (was initially removed befor rotation)
-    scale = eval(meta.loc[0, 'scale'])
-    adjust_x = meta.loc[0, 'roi_x'] * scale[3]
-    adjust_y = meta.loc[0, 'roi_y'] * scale[2]
-    df['x_pixels'] = df['x_pixels'] + adjust_x 
-    df['y_pixels'] = df['y_pixels'] + adjust_y
+        # inverse the rotation (+45 degrees)
+        rot = Rot.from_euler('z', 45, degrees=True)
+        xyz = fdf[['x_s', 'ys', 'zs']].to_numpy()
+        xyz_rot = rot.apply(xyz)
+        x_pixels = xyz_rot[:, 0]
+        y_pixels = xyz_rot[:, 1]
+        z_pixels = fdf['zs'].values
+    
+        # add the adjustment value (was initially removed befor rotation)
+        scale = eval(meta.loc[0, 'scale'])
+        adjust_x = meta.loc[0, 'roi_x'] #* scale[3]
+        adjust_y = meta.loc[0, 'roi_y'] #* scale[2]
+        x_pixels = x_pixels + adjust_x 
+        y_pixels = y_pixels + adjust_y
+    
+        # swap x & y
+        x = y_pixels
+        y = x_pixels
+    
+        # divide by the scale
+        x = x / scale[3]
+        y = y / scale[2]
+        z_pixels = z_pixels / scale[1]
 
-    # divide by the scale
-    df['x_pixels'] = df['x_pixels'] / scale[3]
-    df['y_pixels'] = df['y_pixels'] / scale[2]
-    df['z_pixels'] = df['z_pixels'] / scale[1]
+        # final 180 degree rotation ... unsure why this is necessary... just works
+        rot = Rot.from_euler('z', 180, degrees=True)
+        xyz = np.stack([x, y, z_pixels], axis=1)
+        xyz_rot = rot.apply(xyz)
+
+        # assign values into original df
+        df.loc[idxs, 'x_pixels'] = xyz_rot[:, 0]
+        df.loc[idxs, 'y_pixels'] = xyz_rot[:, 1]
+        df.loc[idxs, 'z_pixels'] = z_pixels
 
     return df
 

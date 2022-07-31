@@ -5,13 +5,10 @@ import pandas as pd
 import numpy as np
 
 d = '/Users/amcg0011/Data/platelet-analysis/dataframes'
-saline_n = '211206_saline_df_220614-amp0.parquet'
-biva_n = '220603_211206_biva_df_spherical-coords.parquet'
-cang_n = '220603_211206_cang_df_spherical-coords.parquet'
-path = os.path.join(d, biva_n)
+path = os.path.join(d, '211206_saline_df_spherical-coords_density_pcnt.parquet')
 df = pd.read_parquet(path)
 
-def get_tracks(df, cols):
+def get_tracks(df, cols=('particle', 'frame', 'z_pixels', 'y_pixels', 'x_pixels')):
     tracks = df[list(cols)].values
     return tracks
 
@@ -22,16 +19,11 @@ def display_all_tracks(df):
         f_df = df[df['path'] == f]
         tracks = get_tracks(f_df, ('particle', 'frame', 'zs', 'ys', 'x_s'))
         v.add_tracks(tracks, properties=f_df, name=f, visible=False)
-    napari.run()
 
 df = df[df['nrtracks'] > 4]
 df = df[(df['phi_diff'] > -0.0825) & (df['phi_diff'] < 0.0825)]
 df = df[(df['theta_diff'] > -0.0407) & (df['theta_diff'] < 0.0407)]
-df = df.dropna(subset=['phi_diff', 'rho_diff', 'theta_diff'])#, 'nb_cont_15'])
+df = df.dropna(subset=['phi_diff', 'rho_diff', 'theta_diff'])
 
 display_all_tracks(df)
-
-#df1 = df1[df1['nrtracks'] > 4]
-#df1 = df1[(df1['phi_diff'] > -0.0825) & (df1['phi_diff'] < 0.0825)]
-#df1 = df1[(df1['theta_diff'] > -0.0407) & (df1['theta_diff'] < 0.0407)]
-#df1 = df1.dropna(subset=['phi_diff', 'rho_diff', 'theta_diff'])
+napari.run()

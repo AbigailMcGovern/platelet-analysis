@@ -31,13 +31,14 @@ def display_tracks_and_properties(df, images, scale=(1, 4, 1, 1)):
     for image in images:
         viewer.add_image(image, scale=scale)
     viewer.add_tracks(tracks, scale=scale, properties=df)
+    viewer.add_points(tracks[:, 1:], scale=scale, size=2)
     napari.run()
 
 
 def display_track_clusters(df, images, cluster_col, scale=(1, 4, 1, 1)):
     viewer = napari.Viewer()
     for image in images:
-        viewer.add_image(image, scale=scale)
+        viewer.add_image(image, scale=scale, color='red')
     clusters = pd.unique(df[cluster_col])
     for c in clusters:
         c_df = df[df[cluster_col] == c]

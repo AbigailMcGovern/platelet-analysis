@@ -11,6 +11,7 @@ from scipy.spatial import cKDTree
 import zarr
 from pathlib import Path
 import os
+from plateletanalysis.variables.transform import revert_to_pixel_coords
 
 
 
@@ -106,7 +107,7 @@ def add_finite_diff_derivative(df, col):
                 diff = np.concatenate([diff, np.array([np.NaN, ])])
                 df.loc[idxs, f'{col}_diff'] = diff
                 progress.update(1)
-    df = df.reset_index()
+    df = df.reset_index(drop=True)
     return df
 
 
@@ -580,13 +581,6 @@ def find_density_percentiles(
         save=None,
     ):
     files = pd.unique(df['path'])
-    images = []
-    t = df['frame'].max()
-    z = np.round(df['zs'].max()).astype(int)
-    y_min = df['ys'].min()
-    y = np.round(df['ys'].max() - y_min).astype(int)
-    x_min = df['x_s'].min()
-    x = np.round(df['x_s'].max()- x_min).astype(int)
     with tqdm(total=len(files)) as progress:
         for f in files:
             fdf = df[df['path'] == f]
@@ -594,6 +588,84 @@ def find_density_percentiles(
             densities = fdf['nb_density_15']
             percentiles = np.array([percentileofscore(densities, d) for d in densities])
             df.loc[idxs, 'nd15_percentile'] = percentiles
+            progress.update(1)
+    return df
+
+
+# ---------------
+# Fibrin distance
+# ---------------
+
+# in the platelet segmentation directory there is code for segmenting fibrin and generating a distance transform
+# for each pixel in the volume. Distance is in microns. 
+
+def assign_fibrin_distance(df, dt_dict):
+    for f in dt_dict.keys():
+        fdf = df[df['path'] == f]
+        idxs = (
+            np.round(fdf['frame'].values).astype(int), 
+            np.round(fdf['z_pixels'].values).astype(int), 
+            np.round(fdf['y_pixels'].values).astype(int), 
+            np.round(fdf['x_pixels'].values).astype(int)
+            )
+        dt_img = dt_dict[f]
+        dt_img = np.array(dt_img)
+        dist = dt_img[idxs]
+        df_idxs = fdf.index.values
+        df.loc[df_idxs, 'fibrin_dist'] = dist
+    return df
+
+
+def fibrin_cotraction(df):
+    df = add_finite_diff_derivative(df, 'fibrin_dist')
+    df['fibrin_cont'] = - df['fibrin_dist_diff'].values
+    df = df.drop(columns=['fibrin_dist_diff'])
+    return df
+    
+
+# -----------------------
+# Quantile normailisation
+# -----------------------
+
+def quantile_normalise_variables(
+        df, 
+        vars=('phi', 'phi_diff', 'rho', 'rho_diff', 'theta', 'theta_diff', 'zs')
+    ):
+    files = pd.unique(df['path'])
+    with tqdm(total=len(files)*len(vars)) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            for v in vars:
+                vn = v + '_pcnt'
+                idxs = fdf.index.values
+                values = fdf[v].values
+                percentiles = np.array([percentileofscore(values, d) for d in values])
+                df.loc[idxs, vn] = percentiles
+                progress.update(1)
+    return df
+
+
+# ---------------
+# Smooth variable
+# ---------------
+
+def smooth_variables(
+    df, 
+    vars=('phi_diff', 'rho_diff', 'theta_diff', 'dv')
+    ):
+    files = pd.unique(df['path'])
+    with tqdm(total=len(files)) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            ps = pd.unique(fdf['particle'])
+            for p in ps:
+                pdf = fdf[fdf['particle'] == p]
+                pdf = pdf.sort_values(by=['frame'])
+                idxs = pdf.index.values
+                for v in vars:
+                    rolling = pdf[v].rolling(5).mean()
+                    vn = v + '_rolling'
+                    df.loc[idxs, vn] = rolling
             progress.update(1)
     return df
 

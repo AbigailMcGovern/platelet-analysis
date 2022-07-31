@@ -112,6 +112,11 @@ def construct_platelet_df(
                     mean = idf[bcol].mean()
                     pdf.loc[i, col] = mean
                     progress.update(1)
+                elif col.startswith('std_'):
+                    bcol = col[4:]
+                    std = idf[bcol].std()
+                    pdf.loc[i, col] = std
+                    progress.update(1)
                 #else:
                  #   idxs, vals = catagorical_vars(df_gb, col)
                   #  pdf.loc[idxs, col] = vals

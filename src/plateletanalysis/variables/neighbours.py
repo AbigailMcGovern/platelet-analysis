@@ -1,10 +1,10 @@
-from asyncio import as_completed
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 from toolz import curry
 from tqdm import tqdm
 from distributed import Client, as_completed
+from .measure import add_finite_diff_derivative
 
 
 # ------------------
@@ -83,7 +83,7 @@ def local_contraction(df, r=15):
     n_iter = len(df)
     client = Client()
     print(client.dashboard_link)
-    dfs = [df[df['path'] == f].reset_index() for f in files]
+    dfs = [df[df['path'] == f].reset_index(drop=True) for f in files]
     #with tqdm(total=n_iter, desc='Adding neighbour contraction') as progress:
     filewise_local_contraction = _filewise_local_contraction(r)
     df = df.set_index('pid')
@@ -213,35 +213,36 @@ def _local_density(df, r, z_max, sphere_size, pid):
 
 
 
-def local_mean_calcium(df, r=15):
+def local_calcium(df, r=15):
     files = pd.unique(df['path'])
-    n_iter = len(df)
-    with tqdm(total=n_iter, desc='Adding neighbour density') as progress:
+    df = df.set_index('pid')
+    t_max = df['frame'].max()
+    with tqdm(total=len(files)*t_max) as progress:
         for f in files:
-            f_df = df[df['path'] == f]
-            idxs = f_df.index.values
-            ca_means = []
-            for p in idxs:
-                val = _local_mean_calcium(p, f_df, r)
-                ca_means.append(val)
-            df.loc[idxs, f'nb_ca_{r}'] = ca_means
-
-                
-def _local_mean_calcium(p, f_df, r):
-    row = f_df.loc[p].reset_index()
-    nbs = row.loc[0, f'nb_particles_{r}']
-    nbs = _ensure_list(nbs)
-    t = row.loc[0, 'frame']
-    f_gb = f_df.groupby(['particle', 'frame'])
-    ca_corr = []
-    for n in nbs:
-        idx = (n, t)
-        ca_corr.append(f_gb.loc[idx, 'ca_corr'])
-    ca_mean = np.mean(ca_corr)
-    return ca_mean
+            fdf = df[df['path'] == f]
+            for t in range(t_max):
+                tdf = fdf[fdf['frame'] == t]
+                df1 = tdf.reset_index()
+                df1 = df1.set_index('particle')
+                pids = tdf.index.values
+                for p in pids:
+                    ca_mean = get_calcium(df, df1, r, p)
+                    df.loc[p, f'nb_ca_corr_{r}'] = ca_mean
+                progress.update(1)
+    df = df.reset_index()
+    return df
 
 
 
+def get_calcium(df, df1, r, pid):
+    row = df.loc[pid, :]
+    nbs = _ensure_list(row[f'nb_particles_{r}'])
+    if len(nbs) > 0:
+        calcium = [df1.loc[nb, 'ca_corr'] for nb in nbs]
+        mean = np.mean(calcium)
+    else:
+        mean = 0
+    return mean
 
 
 
@@ -249,7 +250,31 @@ def _local_mean_calcium(p, f_df, r):
 # Local Dynamic Measures
 # ----------------------
 
-
+def local_calcium_diff_and_copy(df, r=15):
+    files = pd.unique(df['path'])
+    df = df.set_index('pid')
+    t_max = df['frame'].max()
+    with tqdm(total=len(files)) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            fdf = fdf.reset_index()
+            fdf = fdf.set_index(['particle', 'frame'])
+            pids = fdf.index.values
+            for p in pids:
+                # current calcium diff
+                ca_mean = fdf.loc[p, f'nb_ca_corr_{r}']
+                idx = fdf.loc[p, 'pid']
+                p_ca = fdf.loc[p, 'ca_corr']
+                ca_diff = p_ca - ca_mean
+                df.loc[idx, f'nb_ca_diff_{r}'] = ca_diff
+                # how much closer at t + 1
+            progress.update(1)
+    df = df.reset_index()
+    df = add_finite_diff_derivative(df, f'nb_ca_diff_{r}')
+    ca_copying = - df[f'nb_ca_diff_{r}'].values
+    df = df.drop(columns=[f'nb_ca_diff_{r}'])
+    df[f'nb_ca_copying_{r}'] = ca_copying
+    return df
 
 
 # ---------------
@@ -257,75 +282,34 @@ def _local_mean_calcium(p, f_df, r):
 # ---------------
 
 
-def embolysis(df, r_emb=10, min_tracks=5, n_frames=1):
-    df = df[df['frame'] >= min_tracks]
+def embolysis_proximity(df, ks=[5, 10]):
+    '''
+    Embolysis proximity = inverse mean distance to k nearest terminating neighbours 
+    '''
+    df = df.set_index('pid')
     if 'terminating' not in df.columns.values:
         df['terminating'] = df['tracknr'] == df['nrtracks']
     # represent the terminating platelets as a cKDTree
-    term = df[df['terminating'] == True]
-    idxs = term.index.values
-    term['frame'] = (term['frame'] * r_emb) / n_frames
-    term = df[['frame', 'x_s', 'ys', 'zs']].values
-    term_tree_0 = cKDTree(term)
-    term_tree_1 = cKDTree(term.copy())
-    sdm = term_tree_0.sparse_distance_matrix(term_tree_1, r_emb)
-    array = sdm.toarray()
-    for p in range(array.shape[0]):
-        # get the non zero values for the platelet
-        p_dists = array[p, :]
-        p_idxs = np.where(p_dists > 0) # indicies to find pid
-        keep = idxs[p_idxs] # pids that should be kept
-        disps = list(p_dists[p_idxs])
-        # add to the data frame
-        pidx = idxs[p]
-        nb_ps = list(f_df.loc[keep, 'particle'])
-        nb_df.loc[pidx, f'nb_particles_{max_dist}'] = str(nb_ps)
-        nb_df.loc[pidx, f'nb_disp_{max_dist}'] = str(disps)
-
-
-
-
-def embolysis(df, r_emb=10):
-    emb_df = {
-        'emb_nbs' : [None, ] * len(df), 
-        'pid' : df['pid'].values 
-    }
-    emb_df = pd.DataFrame(emb_df).set_index('pid')
-    df['terminates'] = df['tracknr'] == df['nrtracks']
-    term_df = df[df['terminates'] == True]
     files = pd.unique(df['path'])
-    get_embolysis_freinds = _embolysis_partners(df, r_emb)
-    for f in files:
-        p_df = term_df[term_df['path'] == f]
-        idxs = p_df['pid'].values # not index for p_df but for emb_df
-        emb_ptns = p_df['pid'].apply(get_embolysis_freinds)
-        emb_df.loc['emb_nbs', idxs] = emb_ptns
-    df = pd.concat([df.set_index('pid'), emb_df], axis=1).reset_index()  
+    t_max = df['frame'].max() - 1
+    with tqdm(total=len(files) * t_max) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            for t in range(t_max):
+                tdf = fdf[fdf['frame'] == t]
+                term = df[df['terminating'] == True]
+                tree = cKDTree(term[['x_s', 'ys', 'zs']].values.copy())
+                ps = tdf.index.values
+                for p in ps:
+                    point = tdf.loc[p, ['x_s', 'ys', 'zs']].values
+                    for k in ks:
+                        d, _ = tree.query(point, k=k)
+                        mean_dist = np.mean(d)
+                        df.loc[p, f'emb_prox_k{k}'] = 1 / mean_dist
+                progress.update(1)
+    df = df.reset_index()
     return df
 
-
-@curry
-def _embolysis_partners(df, r_emb, pid):
-    row = df[df['pid'] == pid].reset_index()
-    # are any neighbours also terminating at this time point or in the next?
-    nbs = row.loc['nb_particles', 0]
-    nbs = _ensure_list(nbs)
-    nb_disp = row.loc['nb_disp', 0]
-    nb_disp = _ensure_list(nb_disp)
-    frame = row.loc['frame', 0]
-    nb_ptns = []
-    for i, n in enumerate(nbs):
-        if nb_disp[i] <= r_emb:
-            nb_row = df[df['particle'] == n].reset_index()
-            if nb_row.loc['terminating', 0]:
-                nb_ptns.append(n)
-            else: # only need to move to next tp if not terminating
-                nb_row = df[(df['particle'] == n) & (df['frame'] == frame + 1)]
-                if nb_row.loc['terminating', 0]:
-                    nb_ptns.append(n)
-    if len(nb_ptns) == 0:
-        nb_ptns = None
-    return nb_ptns
 
 
 def find_emboli(df):
