@@ -10,7 +10,7 @@ file_names = [
     '211206_cang_df_spherical-coords.parquet', 
     '211206_biva_df_spherical-coords.parquet'
 ]
-py_d = '/fs02/rl54/Abi/platelet-analysis/massive'
+py_d = '/fs02/rl54/Abi/platelet-analysis/massive/add-variables-to-dataframe/neighbours_density_PDnT'
 py_path = os.path.join(py_d, 'add_vars.py')
 
 for i, f in enumerate(file_names):
