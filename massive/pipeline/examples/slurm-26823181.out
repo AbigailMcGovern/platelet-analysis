@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/fs02/rl54/Abi/platelet-analysis/massive/pipeline/0_smooth_coords.py", line 28, in <module>
+    df.to_parquet(sp)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/util/_decorators.py", line 207, in wrapper
+    return func(*args, **kwargs)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/core/frame.py", line 2835, in to_parquet
+    return to_parquet(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/parquet.py", line 420, in to_parquet
+    impl.write(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pandas/io/parquet.py", line 195, in write
+    self.api.parquet.write_table(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pyarrow/parquet/__init__.py", line 2894, in write_table
+    writer.write_table(table, row_group_size=row_group_size)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/pyarrow/parquet/__init__.py", line 1006, in write_table
+    self.writer.write_table(table, row_group_size=row_group_size)
+  File "pyarrow/_parquet.pyx", line 1752, in pyarrow._parquet.ParquetWriter.write_table
+OSError: [Errno 122] Disk quota exceeded

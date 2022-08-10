@@ -1,0 +1,36 @@
+Traceback (most recent call last):
+  File "/fs02/rl54/Abi/platelet-analysis/massive/pipeline/1_spherical_coords.py", line 3, in <module>
+    from plateletanalysis.variables.transform import spherical_coordinates
+  File "/fs02/rl54/Abi/platelet-analysis/src/plateletanalysis/__init__.py", line 7, in <module>
+    from .analysis.menu_func import input
+  File "/fs02/rl54/Abi/platelet-analysis/src/plateletanalysis/analysis/menu_func.py", line 89, in <module>
+    def input( Controls = ['Saline'], 
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/_magicgui.py", line 241, in inner_func
+    return magic_class(func, **kwargs)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/widgets/_function_gui.py", line 175, in __init__
+    widgets=list(sig.widgets(app).values()),
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/signature.py", line 224, in widgets
+    {n: p.to_widget(app) for n, p in self.parameters.items()}
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/signature.py", line 224, in <dictcomp>
+    {n: p.to_widget(app) for n, p in self.parameters.items()}
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/signature.py", line 141, in to_widget
+    widget = create_widget(
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/widgets/_bases/create_widget.py", line 81, in create_widget
+    _app = use_app(kwargs.pop("app"))
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/application.py", line 164, in use_app
+    return _use_app()
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/application.py", line 154, in _use_app
+    Application._instance = Application(backend_name)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/application.py", line 37, in __init__
+    self._use(backend_name)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/application.py", line 63, in _use
+    self._backend_module = import_module(f"magicgui.backends.{module_name}")
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/importlib/__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/backends/_qtpy/__init__.py", line 1, in <module>
+    from .application import ApplicationBackend
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/magicgui/backends/_qtpy/application.py", line 3, in <module>
+    from qtpy.QtCore import Qt, QTimer
+  File "/projects/rl54/Abi/miniconda/envs/platelets/lib/python3.8/site-packages/qtpy/QtCore.py", line 59, in <module>
+    from PyQt5.QtCore import *
+ModuleNotFoundError: No module named 'PyQt5'
