@@ -9,7 +9,8 @@ saline_n = '211206_saline_df_220614-amp0.parquet'
 saline_s5 = '211206_saline_df_smooth-5_0.parquet'
 biva_n = '220603_211206_biva_df_spherical-coords.parquet'
 cang_n = '220603_211206_cang_df_spherical-coords.parquet'
-path = os.path.join(d, saline_n)
+mips_n = '211206_mips_df_220818.parquet'
+path = os.path.join(d, mips_n)
 df = pd.read_parquet(path)
 
 def get_tracks(df, cols):
@@ -26,10 +27,10 @@ def display_all_tracks(df):
     napari.run()
 
 df = df[df['nrtracks'] > 10]
-df = df[(df['phi_diff'] > -0.0825) & (df['phi_diff'] < 0.0825)]
-df = df[(df['theta_diff'] > -0.0407) & (df['theta_diff'] < 0.0407)]
-df = df[(df['nb_cont_15'] > -1.8032318892514754) & (df['nb_cont_15'] < 3.6064637785029507)]
-df = df.dropna(subset=['phi_diff', 'rho_diff', 'theta_diff', 'nb_cont_15'])
+#df = df[(df['phi_diff'] > -0.0825) & (df['phi_diff'] < 0.0825)]
+#df = df[(df['theta_diff'] > -0.0407) & (df['theta_diff'] < 0.0407)]
+#df = df[(df['nb_cont_15'] > -1.8032318892514754) & (df['nb_cont_15'] < 3.6064637785029507)]
+#df = df.dropna(subset=['phi_diff', 'rho_diff', 'theta_diff', 'nb_cont_15'])
 
 display_all_tracks(df)
 
