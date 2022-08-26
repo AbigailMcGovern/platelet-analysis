@@ -35,10 +35,10 @@ for p in paths:
     plt.show()
 
 
-df60 = df[df['nd15_percentile'] > 80]
-df_f10 = df60[df60['frame'] == 10]
+df75 = df[df['nd15_percentile'] > 75]
+df_f10 = df75[df75['frame'] == 10]
 data = df_f10[['x_s', 'ys']].values
-df_f10t11 = df60[(df60['frame'] >= 10) & (df60['frame'] <= 11)]
+df_f10t11 = df75[(df75['frame'] >= 10) & (df60['frame'] <= 11)]
 data = df_f10t11[['x_s', 'ys']].values
 
 plt.scatter(data[:, 0], data[:, 1], s=1)
