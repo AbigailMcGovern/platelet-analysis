@@ -692,3 +692,5 @@ def smooth_variables(
             progress.update(1)
     return df
 
+
+

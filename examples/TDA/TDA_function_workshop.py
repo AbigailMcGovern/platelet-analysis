@@ -214,12 +214,12 @@ def get_outlier_info_for_data(data, x_col, y_col):
 
 
 def plot_longest_loop_average(df, save_path, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%'):
-    out = get_longest_loop_data(df, save_path, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt')
+    out = get_longest_loop_data(df, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt')
     out.to_csv(save_path)
     plot_averages(out, units)
 
 
-def get_longest_loop_data(df, save_path, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt'):
+def get_longest_loop_data(df, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt'):
     data = df[df[col] > centile]
     data = data[['frame', x_col, y_col, 'path']]
     paths = pd.unique(data['path'])
@@ -332,7 +332,7 @@ def get_outlier_number(data, x_col, y_col, units):
     time = np.concatenate([time.copy() for _ in range(len(paths))])
     with tqdm(total=len(paths) * len(frames)) as progress:
         for p in paths:
-            pdf = df[df['path'] == p]
+            pdf = data[data['path'] == p]
             for t in frames:
                 data_t = pdf[pdf['frame'] == t]
                 X = data_t[[x_col, y_col]].values
@@ -452,11 +452,11 @@ def persistance_diagrams_for_timepointz(
 # -----------------------------------------------
 
 
-def max_loop_over_time_comparison(paths, save_path, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%'):
+def max_loop_over_time_comparison(paths, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%'):
     loop_data = {}
     for p in paths:
-        df = pd.read_csv(p)
-        out = get_longest_loop_data(df, save_path, centile=centile, col=col, y_col=y_col, x_col=x_col)
+        df = pd.read_parquet(p)
+        out = get_longest_loop_data(df, centile=centile, col=col, y_col=y_col, x_col=x_col)
         key = Path(p).stem
         loop_data[key] = out
     l_data, o_data, x, y0, y1, hue = _prep_for_seborn(loop_data, units)
@@ -523,6 +523,8 @@ def get_treatment_name(inh):
     return out
 
 
+def turnover_versus_barcode_lifespan(df):
+    pass
 
 
 # ------------
@@ -543,7 +545,7 @@ if __name__ == '__main__':
     df = pd.read_parquet(sp)
 
     # this experiment forms a figure 8 for some reason... might be a laser problem but might not... interesting but grounds for exclusion
-    df = df[df['path'] != '191128_IVMTR33_Inj5_saline_exp3']
+    #df = df[df['path'] != '191128_IVMTR33_Inj5_saline_exp3']
 
     # ---------------------------------------
     # Generate 75th centile scatter animation
@@ -573,11 +575,15 @@ if __name__ == '__main__':
     #number_outliying_over_time(df, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
 
 
-    persistance_diagrams_for_timepointz(df, centile=75, col='nb_density_15_pcntf', 
-                                        y_col='ys_pcnt', x_col='x_s_pcnt', units='%',
-                                        path='200527_IVMTR73_Inj4_saline_exp3', tps=(28, 115, 190))
+    #persistance_diagrams_for_timepointz(df, centile=75, col='nb_density_15_pcntf', 
+      #                                  y_col='ys_pcnt', x_col='x_s_pcnt', units='%',
+       #                                 path='200527_IVMTR73_Inj4_saline_exp3', tps=(28, 115, 190))
+    names = ['211206_saline_df_220818_amp0.parquet', '211206_biva_df.parquet', '211206_cang_df.parquet', '211206_sq_df.parquet', '211206_mips_df_220818.parquet']
+    paths = [os.path.join(d, n) for n in names]
+    max_loop_over_time_comparison(paths, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
 
-    
+
+
 #df80 = df[df['nd15_percentile'] > 80]
 #paths = pd.unique(df80['path'])
 # df = quantile_normalise_variables(df, vars=('x_s', 'ys'))
