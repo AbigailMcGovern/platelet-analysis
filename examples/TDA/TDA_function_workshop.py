@@ -1,3 +1,4 @@
+import enum
 from tkinter import N
 from turtle import right
 from ripser import ripser
@@ -6,11 +7,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
-from matplotlib.animation import FuncAnimation 
+from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
 import seaborn as sns
 from scipy.stats import iqr, scoreatpercentile
 from pathlib import Path
+from scipy import stats
 
 # ---------------------------------------
 # Generate 75th centile scatter animation
@@ -175,6 +177,7 @@ def get_outlier_info_for_data(data, x_col, y_col):
     births = []
     lifespan = []
     outlierness = []
+    path = []
     for t in frames:
         data_t = data[data['frame'] == t]
         X = data_t[[x_col, y_col]].values
@@ -219,35 +222,65 @@ def plot_longest_loop_average(df, save_path, centile=75, col='nd15_percentile', 
     plot_averages(out, units)
 
 
-def get_longest_loop_data(df, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt'):
+def get_longest_loop_data(df, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', get_accessory_data=False):
     data = df[df[col] > centile]
     data = data[['frame', x_col, y_col, 'path']]
-    paths = pd.unique(data['path'])
-    path = []
+    injuries = pd.unique(data['path'])
     frames = []
     deaths = []
     births = []
     lifespan = []
     outlierness = []
-    for inj in paths:
-        inj_data = data[data['path'] == inj]
-        out_dict = get_outlier_info_for_data(inj_data, x_col, y_col)
-        path = path + [inj, ] * len(out_dict['frame'])
-        frames = frames + out_dict['frame']
-        deaths = deaths + out_dict['deaths']
-        births = births + out_dict['births']
-        lifespan = lifespan + out_dict['lifespan']
-        outlierness = outlierness + out_dict['outlierness']
+    paths = []
+    tx_name = get_treatment_name(data['path'].values[0])
+    with tqdm(desc=f'Getting max barcode data for treatment = {tx_name}', total=len(paths)) as progress:
+        for inj in injuries:
+            inj_data = data[data['path'] == inj]
+            out_dict = get_outlier_info_for_data(inj_data, x_col, y_col)
+            #out_dict['path'] = [inj, ] * len()
+            paths_new = [inj, ] * len(out_dict['frame'])
+            paths = paths + paths_new
+            frames = frames + out_dict['frame']
+            deaths = deaths + out_dict['deaths']
+            births = births + out_dict['births']
+            lifespan = lifespan + out_dict['lifespan']
+            outlierness = outlierness + out_dict['outlierness']
+            progress.update(1)
     out = {
         'frame' : frames, 
         'births' : births, 
         'deaths' : deaths, 
         'outlierness' : outlierness, 
-        'lifespan' : lifespan
+        'lifespan' : lifespan, 
+        'path' : paths, 
     }
     out = pd.DataFrame(out)
+    if get_accessory_data:
+        uframes = pd.unique(out['frame'])
+        upaths = pd.unique(out['path'])
+        its = len(upaths) * len(uframes)
+        with tqdm(desc=f'Getting accessory data for treatment = {tx_name}', total=its) as progress:
+            for p in upaths:
+                p_df = df[df['path'] == p]
+                p_out = out[out['path'] == p]
+                for f in uframes:
+                    f0_df = p_df[p_df['frame'] == f]
+                    f_out = p_out[p_out['frame'] == f]
+                    idx = f_out.index.values
+                    count0 = get_count(f0_df, thresh_col=col)
+                    out.loc[idx, 'count'] = count0
+                    f1_df = p_df[p_df['frame'] == f + 1]
+                    if len(f1_df) > 0:
+                        count1 = get_count(f1_df, thresh_col=col)
+                        turnover = ((count1 - count0) / count0) * 100
+                    else:
+                        turnover = np.NaN
+                    out.loc[idx, 'turnover'] = turnover
+                    out.loc[idx, 'dv (um/s)'] = f0_df['dv'].mean()
+                    out.loc[idx, 'corrected calcium'] = f0_df['ca_corr'].mean()
+                    out.loc[idx, 'density (platelets/um^2)'] = f0_df['nb_density_15'].mean()
+                    progress.update(1)
     return out
-
 
 
 def plot_averages(data, units):
@@ -447,6 +480,7 @@ def persistance_diagrams_for_timepointz(
     plt.show()
 
 
+
 # -----------------------------------------------
 # Multiple group comparison max barcode over time
 # -----------------------------------------------
@@ -461,6 +495,24 @@ def max_loop_over_time_comparison(paths, centile=75, col='nd15_percentile', y_co
         loop_data[key] = out
     l_data, o_data, x, y0, y1, hue = _prep_for_seborn(loop_data, units)
     _make_comparative_plots(l_data, o_data, x, y0, y1, hue)
+
+
+
+def max_loop_over_time_data(paths, save_path, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%'):
+    loop_data = {}
+    n = len(paths)
+    for i, p in enumerate(paths):
+        print(f'Obtaining data for dataframe {i} of {n}')
+        print(f'path: {p}')
+        df = pd.read_parquet(p)
+        out = get_longest_loop_data(df, centile=centile, col=col, y_col=y_col, x_col=x_col, get_accessory_data=True)
+        key = Path(p).stem
+        loop_data[key] = out
+    out_df = generate_full_data_sheet(loop_data, units)
+    #spo = os.path.join(save_dir, save_name + '_outlierness.csv')
+    out_df.to_csv(save_path)
+    return out_df
+    
 
 
 
@@ -479,20 +531,71 @@ def _prep_for_seborn(loop_data, units):
         y1 : [], 
         hue : []
     }
-    for inh in loop_data:
+    for inh in loop_data.keys():
         time = loop_data[inh]['frame'].values / 0.321764322705706
         lifespan = loop_data[inh]['lifespan'].values
         outlierness = loop_data[inh]['outlierness'].values
+        assert len(time) == len(lifespan)
+        assert len(time) == len(outlierness)
         l_data[x] = np.concatenate([l_data[x], time])
         o_data[x] = np.concatenate([o_data[x], time])
-        l_data[y0] = np.concatenate([l_data[x], lifespan])
+        l_data[y0] = np.concatenate([l_data[y0], lifespan])
         o_data[y1] = np.concatenate([o_data[y1], outlierness])
         tx_name = get_treatment_name(inh)
-        l_data[hue] = np.array([tx_name, ] * len(time))
-        o_data[hue] = np.array([tx_name, ] * len(time))
+        l_data[hue] = np.concatenate([l_data[hue], np.array([tx_name, ] * len(time))])
+        o_data[hue] = np.concatenate([o_data[hue], np.array([tx_name, ] * len(time))])
     l_data = pd.DataFrame(l_data)
     o_data = pd.DataFrame(o_data)
     return l_data, o_data, x, y0, y1, hue
+
+
+def generate_full_data_sheet(loop_data, units):
+    x = 'time (s)'
+    y0 = f'radius {units}'
+    y1 = 'Standard deviations from mean'
+    p = 'path'
+    hue = 'treatment'
+    df = { # should change this to defaltdict
+        'treatment' : [], 
+        'path' : [], 
+        'frame' : [],
+        'time (s)' : [], 
+        f'radius {units}' : [], 
+        'Standard deviations from mean' : [], 
+        'turnover (%)' : [], 
+        'platelet count' : [], 
+        'dv (um/s)' : [], 
+        'corrected calcium' : [], 
+        'density (platelets/um^2)' : []
+    }
+    for inh in loop_data.keys():
+        tx_name = get_treatment_name(inh)
+        p = loop_data[inh]['path'].values
+        tx = np.array([tx_name, ] * len(p))
+        f = loop_data[inh]['frame'].values
+        time = loop_data[inh]['frame'].values / 0.321764322705706
+        lifespan = loop_data[inh]['lifespan'].values
+        outlierness = loop_data[inh]['outlierness'].values
+        turnover = loop_data[inh]['turnover'].values
+        count = loop_data[inh]['count'].values
+        dv = loop_data[inh]['dv (um/s)'].values
+        ca_corr = loop_data[inh]['corrected calcium'].values
+        dens = loop_data[inh]['density (platelets/um^2)'].values
+        df['treatment'] = np.concatenate([df['treatment'], tx])
+        df['path'] = np.concatenate([df['path'], p])
+        df['frame'] = np.concatenate([df['frame'], f])
+        df['time (s)'] = np.concatenate([df['time (s)'], time])
+        df[f'radius {units}'] = np.concatenate([df[f'radius {units}'], lifespan])
+        df['Standard deviations from mean'] = np.concatenate([df['Standard deviations from mean'], outlierness])
+        df['turnover (%)'] = np.concatenate([df['turnover (%)'], turnover])
+        df['platelet count'] = np.concatenate([df['platelet count'], count])
+        df['dv (um/s)'] = np.concatenate([df['dv (um/s)'], dv])
+        df['corrected calcium'] = np.concatenate([df['corrected calcium'], ca_corr])
+        df['density (platelets/um^2)'] = np.concatenate([df['density (platelets/um^2)'], dens])
+    df = pd.DataFrame(df)
+    return df
+        
+
 
 
 
@@ -514,6 +617,8 @@ def get_treatment_name(inh):
         out = 'bivalirudin'
     elif 'cang' in inh:
         out = 'cangrelor'
+    elif 'veh-mips' in inh:
+        out = 'MIPS vehicle'
     elif 'mips' in inh:
         out = 'MIPS'
     elif 'sq' in inh:
@@ -522,9 +627,116 @@ def get_treatment_name(inh):
         out = inh
     return out
 
+# '211206_veh-mips_df_220831.parquet'
+def variable_versus_barcode_lifespan(df, var='platelet count', time_bins=((0, 60), (60, 180), (180, 600)), units='%'):
+    tx_col = 'treatment'
+    t_col = 'time (s)'
+    l_col = f'radius {units}'
+    o_col = 'Standard deviations from mean'
+    sns.set_style("ticks")
+    fig, axes = plt.subplots(len(time_bins), 2, sharey=True, sharex='col')
+    for i, bin in enumerate(time_bins):
+        t_min, t_max = bin
+        data = df[(df[t_col] > t_min) & (df[t_col] < t_max)]
+        data = injury_averages(data, units)
+        if len(time_bins) == 1:
+            ax0 = axes[0]
+            ax1 = axes[1]
+        else:
+            ax0 = axes[i, 0]
+            ax1 = axes[i, 1]
+        slope, intercept = _stats_with_print(l_col, var, f'time bin: {bin} seconds | {var} vs lifespan', data)
+        sns.scatterplot(x=l_col, y=var, hue=tx_col, data=data, ax=ax0) # palette="husl"
+        sns.move_legend(ax0, "upper left", bbox_to_anchor=(1, 1))
+        ax0.axline((0, intercept), (1, intercept + slope), ls='--', c='black')
+        slope, intercept = _stats_with_print(o_col, var, f'time bin: {bin} seconds | {var} vs outlierness', data)
+        sns.scatterplot(x=o_col, y=var, hue=tx_col, data=data, ax=ax1)
+        sns.move_legend(ax1, "upper left", bbox_to_anchor=(1, 1))
+        ax1.axline((0, intercept), (1, intercept + slope), ls='--', c='black')
+    plt.show()
 
-def turnover_versus_barcode_lifespan(df):
-    pass
+
+
+def count_versus_barcode_lifespan(df, time_bins=((0, 60), (60, 180), (180, 600)), units='%'):
+    tx_col = 'treatment'
+    p_col = 'path' 
+    f_col = 'frame'
+    t_col = 'time (s)'
+    l_col = f'radius {units}'
+    o_col = 'Standard deviations from mean'
+    turn_col = 'turnover (%)'
+    c_col = 'platelet count'
+    sns.set_style("ticks")
+    fig, axes = plt.subplots(len(time_bins), 2, sharey=True, sharex='col')
+    for i, bin in enumerate(time_bins):
+        t_min, t_max = bin
+        data = df[(df[t_col] > t_min) & (df[t_col] < t_max)]
+        data = injury_averages(data, units)
+        ax0 = axes[i, 0]
+        ax1 = axes[i, 1]
+        slope, intercept = _stats_with_print(l_col, c_col, f'time bin: {bin} seconds | turnover vs lifespan', data)
+        sns.scatterplot(x=l_col, y=c_col, hue=tx_col, data=data, ax=ax0) # palette="husl"
+        sns.move_legend(ax0, "upper left", bbox_to_anchor=(1, 1))
+        ax0.axline((0, intercept), (1, intercept + slope), ls='--', c='black')
+        slope, intercept = _stats_with_print(l_col, c_col, f'time bin: {bin} seconds | turnover vs outlierness', data)
+        sns.scatterplot(x=o_col, y=c_col, hue=tx_col, data=data, ax=ax1)
+        sns.move_legend(ax1, "upper left", bbox_to_anchor=(1, 1))
+        ax1.axline((0, intercept), (1, intercept + slope), ls='--', c='black')
+    plt.show()
+
+
+def injury_averages(df, units='%'):
+    tx_col = 'treatment'
+    p_col = 'path' 
+    f_col = 'frame'
+    t_col = 'time (s)'
+    l_col = f'radius {units}'
+    o_col = 'Standard deviations from mean'
+    turn_col = 'turnover (%)'
+    c_col = 'platelet count'
+    dv_col = 'dv (um/s)'
+    ca_col = 'corrected calcium'
+    dens_col = 'density (platelets/um^2)'
+    paths = pd.unique(df[p_col])
+    df_av = {
+        tx_col : [df[df[p_col] == p][tx_col].values[0] for p in paths], 
+        p_col : [df[df[p_col] == p][p_col].values[0] for p in paths], 
+        f_col : [df[df[p_col] == p][f_col].values[0] for p in paths], 
+        t_col : [df[df[p_col] == p][t_col].mean() for p in paths], 
+        l_col : [df[df[p_col] == p][l_col].mean() for p in paths], 
+        o_col : [df[df[p_col] == p][o_col].mean() for p in paths],
+        turn_col : [df[df[p_col] == p][turn_col].mean() for p in paths],  
+        c_col : [df[df[p_col] == p][c_col].mean() for p in paths], 
+        dv_col : [df[df[p_col] == p][dv_col].mean() for p in paths], 
+        ca_col : [df[df[p_col] == p][ca_col].mean() for p in paths], 
+        dens_col : [df[df[p_col] == p][dens_col].mean() for p in paths], 
+    }
+    df_av = pd.DataFrame(df_av)
+    return df_av
+
+
+# --------------------
+# Additional functions
+# --------------------
+
+
+def get_count(df, thresh_col='nd15_percentile', threshold=25):
+    sml_df = df[df[thresh_col] > threshold]
+    count = len(sml_df)
+    return count
+
+
+def _stats_with_print(x_col, y_col, desc, data):
+    x = data[x_col]
+    y = data[y_col]
+    print(f'Pearson R for {desc}')
+    r, p = stats.pearsonr(x, y)
+    print(f'r = {r}, p = {p}')
+    print(f'Linear regression for {desc}')
+    slope, intercept, r, p, se = stats.linregress(x, y)
+    rsq = r ** 2
+    print(f'slope = {slope}, intercept = {intercept}, r = {r}, r squared = {rsq}, se = {se}, p = {p}')
+    return slope, intercept
 
 
 # ------------
@@ -542,7 +754,9 @@ if __name__ == '__main__':
     #path = os.path.join(d, saline_n)
     sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220818_amp0.parquet'
     sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220822_amp0.parquet'
-    df = pd.read_parquet(sp)
+    sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220827_amp0.parquet'
+    #df = pd.read_parquet(sp)
+    #print(df.columns.values)
 
     # this experiment forms a figure 8 for some reason... might be a laser problem but might not... interesting but grounds for exclusion
     #df = df[df['path'] != '191128_IVMTR33_Inj5_saline_exp3']
@@ -556,7 +770,7 @@ if __name__ == '__main__':
     #save_path = '/Users/amcg0011/Data/platelet-analysis/TDA/saline_QNxy_75thcentile_density_persistance.gif'
     #anim = density_centile_persistance_animation(df, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt')
 
-    paths = pd.unique(df['path'])
+    #paths = pd.unique(df['path'])
     #for path in paths:
      #   pdf = df[df['path'] == path]
      ##   save_path = f'/Users/amcg0011/Data/platelet-analysis/TDA/density-percentile_saline/Injuries/xy_ppcnt/saline_QNxy_75thcentile_density_{path}.gif'
@@ -578,9 +792,26 @@ if __name__ == '__main__':
     #persistance_diagrams_for_timepointz(df, centile=75, col='nb_density_15_pcntf', 
       #                                  y_col='ys_pcnt', x_col='x_s_pcnt', units='%',
        #                                 path='200527_IVMTR73_Inj4_saline_exp3', tps=(28, 115, 190))
-    names = ['211206_saline_df_220818_amp0.parquet', '211206_biva_df.parquet', '211206_cang_df.parquet', '211206_sq_df.parquet', '211206_mips_df_220818.parquet']
+    names = ['211206_saline_df_220827_amp0.parquet', '211206_biva_df.parquet', '211206_cang_df.parquet', '211206_sq_df.parquet', '211206_mips_df_220818.parquet']
     paths = [os.path.join(d, n) for n in names]
-    max_loop_over_time_comparison(paths, centile=75, col='nd15_percentile', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
+    #max_loop_over_time_comparison(paths, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
+    save_dir = '/Users/amcg0011/Data/platelet-analysis/TDA/treatment_comparison'
+    save_name = 'saline_biva_cang_sq_mips_PH-data-all.csv'
+    save_path = os.path.join(save_dir, save_name)
+    #max_loop_over_time_data(paths, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
+    df = pd.read_csv(save_path)
+    #df_av = injury_averages(df, units='%')
+    #count_versus_barcode_lifespan(df, time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    #variable_versus_barcode_lifespan(df, var='turnover (%)', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    #variable_versus_barcode_lifespan(df, var='platelet count', time_bins=((0, 600), ), units='%')
+    #variable_versus_barcode_lifespan(df, var='dv (um/s)', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    #variable_versus_barcode_lifespan(df, var='density (platelets/um^2)', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    #variable_versus_barcode_lifespan(df, var='dv (um/s)', time_bins=((0, 600), ), units='%')
+    #df = df[df['treatment'] == 'saline']
+    #variable_versus_barcode_lifespan(df, var='corrected calcium', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    #variable_versus_barcode_lifespan(df, var='corrected calcium', time_bins=((0, 600), ), units='%')
+    #variable_versus_barcode_lifespan(df, var='density (platelets/um^2)', time_bins=((0, 600), ), units='%')
+
 
 
 
