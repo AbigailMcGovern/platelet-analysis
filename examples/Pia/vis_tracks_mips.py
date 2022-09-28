@@ -1,21 +1,29 @@
+
 import matplotlib.pyplot as plt
 import os
 import napari
 import pandas as pd
 import numpy as np
+from plateletanalysis.variables.measure import quantile_normalise_variables_frame
 
 d = '/Users/amcg0011/Data/platelet-analysis/dataframes'
 mips_n = '211206_mips_df_220818.parquet'
-saline_n = '211206_saline_df_220827_amp0.parquet'
-path = os.path.join(d, saline_n)
+#saline_n = '211206_saline_df_220827_amp0.parquet'
+path = os.path.join(d, mips_n)
 df = pd.read_parquet(path)
+ant_df = df[df['ys'] > 0]
+pos_df = df[df['ys'] < 0]
+ant_df = quantile_normalise_variables_frame(ant_df, ('dist_c', ))
+pos_df = quantile_normalise_variables_frame(pos_df, ('dist_c', ))
+df = pd.concat([ant_df, pos_df])
+df = df.reset_index(drop=True)
 
 def get_tracks(df, cols):
     tracks = df[list(cols)].values
     return tracks
 
 
-def display_all_tracks_with_surface(df, var='nb_density_15_pcntf', thresh=50):
+def display_all_tracks_with_surface(df, var='nb_density_15_pcntf', thresh=60):
     files = pd.unique(df['path'])
     v = napari.Viewer()
     for f in files:
@@ -28,13 +36,13 @@ def display_all_tracks_with_surface(df, var='nb_density_15_pcntf', thresh=50):
 
 
 def display_surface_points(fdf, f, v, var='nb_density_15_pcnt', thresh=50):
-    sdf = fdf[fdf[var] < thresh]
+    sdf = fdf[(fdf[var] < thresh) & (fdf['zs'] > 15) & (fdf['dist_c_pcntf'] > 40)]
     points = get_tracks(sdf, ('frame', 'zs', 'ys', 'x_s'))
     v.add_points(points, properties=sdf, name=f, visible=False, size=2, edge_color='white')
 
 
 def display_inner_points(fdf, f, v, var='nb_density_15_pcnt', thresh=50):
-    sdf = fdf[fdf[var] > thresh]
+    sdf = fdf[(fdf[var] > thresh)]
     points = get_tracks(sdf, ('frame', 'zs', 'ys', 'x_s'))
     v.add_points(points, properties=sdf, name=f, visible=False, size=2, edge_color='red')
 

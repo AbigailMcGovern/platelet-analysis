@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from scipy import stats
+from plateletanalysis.variables.measure import quantile_normalise_variables
 
 
 def violin_plots(df, vars, exp_col):
@@ -64,27 +65,29 @@ def _stats_with_print(x, y, col):
 if __name__ == '__main__':
     import pandas as pd
     d = '/Users/amcg0011/Data/platelet-analysis/dataframes'
-    sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220822_amp0.parquet'
+    sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220827_amp0.parquet'
     df = pd.read_parquet(sp)
+    #df = quantile_normalise_variables(df, ())
     names = {
         'x_s' : 'x (um)', 
         'ys' : 'y (um)', 
         'zs' : 'z (um)', 
        # 'phi' : 'phi (rad)', 
        # 'theta' : 'theta (rad)', 
-        'rho' : 'rho (um)', 
+        'rho' : 'centre distance (um)', 
        #'x_s_pcnt' : 'x (%)'
+       'rho_pcnt' : 'centre distance (%)'
         }
     df = df.rename(columns=names)
     df = df.rename(columns={'path' : 'injury', 'dv' : 'dv (um/s)', 'rho_pcnt' : 'rho (%)'})
-    #vars = [names[key] for key in names.keys()]
-    #violin_plots(df, vars, 'injury')
-    for key, grp in df.groupby(['injury', ]):
-        idx = grp.index.values
-        max_val = grp['rho (um)'].max()
-        df.loc[idx, 'P(rho max)'] = grp['rho (um)'] / max_val
+    vars = [names[key] for key in names.keys()]
+    violin_plots(df, vars, 'injury')
+    #for key, grp in df.groupby(['injury', ]):
+     #   idx = grp.index.values
+      #  max_val = grp['rho (um)'].max()
+       # df.loc[idx, 'P(rho max)'] = grp['rho (um)'] / max_val
     
-    df = df.dropna(subset=['dv (um/s)', 'rho (um)', 'rho (%)', 'P(rho max)'])
-    kde_plots_for_comparison(df, 'dv (um/s)', 'rho (um)', 'rho (%)', 'P(rho max)', frame_range=(115, 193))
+    #df = df.dropna(subset=['dv (um/s)', 'rho (um)', 'rho (%)', 'P(rho max)'])
+    #kde_plots_for_comparison(df, 'dv (um/s)', 'rho (um)', 'rho (%)', 'P(rho max)', frame_range=(115, 193))
     #statistical_comparison(df, 'dv (um/s)', 'rho (um)', 'rho (%)', 'P(rho max)', frame_range=(115, 193))
 

@@ -14,12 +14,14 @@ from scipy.stats import iqr, scoreatpercentile
 from pathlib import Path
 from scipy import stats
 
+from plateletanalysis.variables.measure import quantile_normalise_variables_frame
+
 # ---------------------------------------
 # Generate 75th centile scatter animation
 # ---------------------------------------
 
 
-def density_centile_scatter_animation(df, save_path, centile=99, col='nd15_percentile', y_col='ys', x_col='x_s', xlim =(-50, 50), ylim =(-90, 50)):
+def density_centile_scatter_animation(df, save_path, centile=75, col='nd15_percentile', y_col='ys', x_col='x_s', xlim =(-50, 50), ylim =(-90, 50)):
     fig = plt.figure(figsize=(5, 7))
     axis = plt.axes(xlim=xlim, 
                     ylim=ylim) 
@@ -279,6 +281,7 @@ def get_longest_loop_data(df, centile=75, col='nb_density_15_pcntf', y_col='ys_p
                     out.loc[idx, 'dv (um/s)'] = f0_df['dv'].mean()
                     out.loc[idx, 'corrected calcium'] = f0_df['ca_corr'].mean()
                     out.loc[idx, 'density (platelets/um^2)'] = f0_df['nb_density_15'].mean()
+
                     progress.update(1)
     return out
 
@@ -755,11 +758,11 @@ if __name__ == '__main__':
     sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220818_amp0.parquet'
     sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220822_amp0.parquet'
     sp = '/Users/amcg0011/Data/platelet-analysis/dataframes/211206_saline_df_220827_amp0.parquet'
-    #df = pd.read_parquet(sp)
+    df = pd.read_parquet(sp)
     #print(df.columns.values)
 
     # this experiment forms a figure 8 for some reason... might be a laser problem but might not... interesting but grounds for exclusion
-    #df = df[df['path'] != '191128_IVMTR33_Inj5_saline_exp3']
+    df = df[df['path'] != '191128_IVMTR33_Inj5_saline_exp3']
 
     # ---------------------------------------
     # Generate 75th centile scatter animation
@@ -770,12 +773,13 @@ if __name__ == '__main__':
     #save_path = '/Users/amcg0011/Data/platelet-analysis/TDA/saline_QNxy_75thcentile_density_persistance.gif'
     #anim = density_centile_persistance_animation(df, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt')
 
-    #paths = pd.unique(df['path'])
+    paths = pd.unique(df['path'])
+    #df = quantile_normalise_variables_frame(df, ('dvz', ))
     #for path in paths:
-     #   pdf = df[df['path'] == path]
-     ##   save_path = f'/Users/amcg0011/Data/platelet-analysis/TDA/density-percentile_saline/Injuries/xy_ppcnt/saline_QNxy_75thcentile_density_{path}.gif'
-       # save_path = f'/Users/amcg0011/Data/platelet-analysis/TDA/density-percentile_saline/Injuries/xy_ppcnt/persistance-diagrams/saline_QNxy_75thcentileF_density_persistance_{path}.gif'
-      #  anim = density_centile_scatter_animation(pdf, save_path, centile=75, col='nb_density_15_pcntf')
+       # pdf = df[df['path'] == path]
+       # save_path = f'/Users/amcg0011/Data/platelet-analysis/TDA/density-percentile_saline/Injuries/xy_ppcnt/saline_QNxy_75thcentile_density_{path}.gif'
+       # save_path = f'/Users/amcg0011/Data/platelet-analysis/TDA/dvz-percentile_saline/xy_scatter/saline_QNxy_75thcentileF_dvz_persistance_{path}.gif'
+       # anim = density_centile_scatter_animation(pdf, save_path, centile=75, col='dvz_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', ylim=(0, 100), xlim=(0,100))
         #anim = density_centile_persistance_animation(pdf, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt')
     
     #save_path = '/Users/amcg0011/Data/platelet-analysis/TDA/saline_QNxy_90thcentile_outlierBC-aggregate.csv'
@@ -807,8 +811,9 @@ if __name__ == '__main__':
     #variable_versus_barcode_lifespan(df, var='dv (um/s)', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
     #variable_versus_barcode_lifespan(df, var='density (platelets/um^2)', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
     #variable_versus_barcode_lifespan(df, var='dv (um/s)', time_bins=((0, 600), ), units='%')
-    #df = df[df['treatment'] == 'saline']
-    #variable_versus_barcode_lifespan(df, var='corrected calcium', time_bins=((0, 60), (60, 180), (180, 600)), units='%')
+    df = df[df['treatment'] != 'cangrelor']
+    df = df[df['treatment'] != 'bivalirudin']
+    variable_versus_barcode_lifespan(df, var='corrected calcium', time_bins=((0, 30), (30, 90), (90, 300), (300, 600)), units='%')
     #variable_versus_barcode_lifespan(df, var='corrected calcium', time_bins=((0, 600), ), units='%')
     #variable_versus_barcode_lifespan(df, var='density (platelets/um^2)', time_bins=((0, 600), ), units='%')
 
