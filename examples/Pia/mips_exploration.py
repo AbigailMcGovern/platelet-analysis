@@ -31,7 +31,7 @@ def timeplot_surface_comparison(df0, df1, y_col='dv', threshold=60, thresh_col='
 
 
 
-def add_surface_variables(df, threshold=60, thresh_col='nb_density_15_pcntf', zs=7, ys=0):
+def add_surface_variables(df, threshold=50, thresh_col='nb_density_15_pcntf', zs=7, ys=0):
     ant_df = df[df['ys'] > 0]
     pos_df = df[df['ys'] < 0]
     ant_df = quantile_normalise_variables_frame(ant_df, ('dist_c', )) # quantile normailise for both anterior and posterior
@@ -40,11 +40,12 @@ def add_surface_variables(df, threshold=60, thresh_col='nb_density_15_pcntf', zs
     df = df.reset_index(drop=True)
     quantile_normalise_variables_frame
     df['surface'] = ['core', ] * len(df)
-    sdf = df[(df[thresh_col] < threshold) & (df['zs'] > 15) & (df['dist_c_pcntf'] > 40)]
+    sdf = df[(df[thresh_col] < threshold) & (df['zs'] > 8) & (df['dist_c_pcntf'] > 40)]
     s_idxs = sdf.index.values
     df.loc[s_idxs, 'surface'] = ['surface', ] * len(sdf)
     df['anterior_surface'] = ['core and posterior', ] * len(df)
     asdf = sdf[sdf['ys'] > ys]
+    lsdf = ...
     as_idxs = asdf.index.values
     df.loc[as_idxs, 'anterior_surface'] = ['anterior surface', ] * len(asdf)
     print(pd.unique(df['surface']))

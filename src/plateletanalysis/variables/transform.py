@@ -194,3 +194,43 @@ def _spherical_coord_theta(df):
 def _spherical_coord_phi(df):
     phi = np.arctan(df['ys'].values / np.abs(df['x_s'].values))
     return pd.DataFrame({'pid' : df['pid'].values, 'phi' : phi})
+
+
+
+# -----------------------
+# Cylindrical coordinates
+# -----------------------
+
+
+def cylindrical_coordinates(df):
+    '''
+    Find cylindircal coordinates (rho, phi, z - there are many naming conventions 
+    so i picked the one most consistent with how I named the spherical coords... 
+    doesn't matter anyway, the columns are named as radial [rho] and azimuthal
+    [phi]).
+
+    This is used to project onto a place sweeping through the donut ring. 
+    Do this by using just the radial and z coordinates. You may or may not need
+    to quantile normalise the radial coordinate in sectors to account for 
+    differences in thickness in different parts of the clot.
+    '''
+    radial = (df['x_s'].values ** 2 + df['ys'].values ** 2 ) ** 0.5
+    df['xyr'] = zip(list(df['x_s'].values), list(df['ys'].values), list(radial))
+    azimuthal = df['xyr'].apply(_calculate_cylindrical_azimuthal)
+    df = df.drop('xyz', axis=1) 
+    df['cyl_radial'] = radial
+    df['cyl_azimuthal'] = azimuthal
+    return df
+
+
+def _calculate_cylindrical_azimuthal(xyr):
+    # visualise and adjust to suit needs
+    x, y, r = xyr
+    if x == 0 and y == 0:
+        phi = np.NaN
+    elif x >= 0:
+        phi = np.arcsin(y / r)
+    elif x < 0 and y >= 0:
+        phi = - np.arcsin(y / r) + np.pi
+    elif x < 0 and y < 0:
+        phi = - np.arcsin(y / r) + np.pi

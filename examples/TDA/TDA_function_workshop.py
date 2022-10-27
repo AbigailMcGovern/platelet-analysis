@@ -1,8 +1,4 @@
-import enum
-from tkinter import N
-from turtle import right
 from ripser import ripser
-from persim import plot_diagrams
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,10 +6,8 @@ import os
 from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
 import seaborn as sns
-from scipy.stats import iqr, scoreatpercentile
 from pathlib import Path
 from scipy import stats
-
 from plateletanalysis.variables.measure import quantile_normalise_variables_frame
 
 # ---------------------------------------
@@ -258,6 +252,7 @@ def get_longest_loop_data(df, centile=75, col='nb_density_15_pcntf', y_col='ys_p
     }
     out = pd.DataFrame(out)
     if get_accessory_data:
+        df = quantile_normalise_variables_frame()
         uframes = pd.unique(out['frame'])
         upaths = pd.unique(out['path'])
         its = len(upaths) * len(uframes)
@@ -265,6 +260,8 @@ def get_longest_loop_data(df, centile=75, col='nb_density_15_pcntf', y_col='ys_p
             for p in upaths:
                 p_df = df[df['path'] == p]
                 p_out = out[out['path'] == p]
+                time_counts = [len(grp) for k, grp in df.groupby(['frame',])]
+                max_count = np.max(time_counts)
                 for f in uframes:
                     f0_df = p_df[p_df['frame'] == f]
                     f_out = p_out[p_out['frame'] == f]
@@ -274,14 +271,23 @@ def get_longest_loop_data(df, centile=75, col='nb_density_15_pcntf', y_col='ys_p
                     f1_df = p_df[p_df['frame'] == f + 1]
                     if len(f1_df) > 0:
                         count1 = get_count(f1_df, thresh_col=col)
-                        turnover = ((count1 - count0) / count0) * 100
+                        turnover = (count1 - count0)
+                        turnover_pcnt = ((count1 - count0) / count0) * 100
+                        turnover_pcnt_max = ((count1 - count0) / max_count) * 100
+
                     else:
                         turnover = np.NaN
+                        turnover_pcnt = np.NaN
+                        turnover_pcnt_max = np.NaN
                     out.loc[idx, 'turnover'] = turnover
+                    out.loc[idx, 'turnover (%)'] = turnover_pcnt
+                    out.loc[idx, 'turnover (% max)'] = turnover_pcnt_max
                     out.loc[idx, 'dv (um/s)'] = f0_df['dv'].mean()
+                    out.loc[idx, 'dvz (um/s)'] = f0_df['dvz'].mean()
+                    out.loc[idx, 'dvy (um/s)'] = f0_df['dvy'].mean()
                     out.loc[idx, 'corrected calcium'] = f0_df['ca_corr'].mean()
+                    out.loc[idx, 'centre distance'] = f0_df['dist_c'].mean()
                     out.loc[idx, 'density (platelets/um^2)'] = f0_df['nb_density_15'].mean()
-
                     progress.update(1)
     return out
 
@@ -565,11 +571,14 @@ def generate_full_data_sheet(loop_data, units):
         'time (s)' : [], 
         f'radius {units}' : [], 
         'Standard deviations from mean' : [], 
+        'turnover' : [], 
         'turnover (%)' : [], 
+        'turnover (% max)' : [], 
         'platelet count' : [], 
         'dv (um/s)' : [], 
         'corrected calcium' : [], 
-        'density (platelets/um^2)' : []
+        'density (platelets/um^2)' : [], 
+        'centre distance (um)' : [], 
     }
     for inh in loop_data.keys():
         tx_name = get_treatment_name(inh)
@@ -582,19 +591,27 @@ def generate_full_data_sheet(loop_data, units):
         turnover = loop_data[inh]['turnover'].values
         count = loop_data[inh]['count'].values
         dv = loop_data[inh]['dv (um/s)'].values
+        dvz = loop_data[inh]['dvz (um/s)'].values
+        dvy = loop_data[inh]['dvy (um/s)'].values
         ca_corr = loop_data[inh]['corrected calcium'].values
         dens = loop_data[inh]['density (platelets/um^2)'].values
+        cd = loop_data[inh]['centre distance'].values
         df['treatment'] = np.concatenate([df['treatment'], tx])
         df['path'] = np.concatenate([df['path'], p])
         df['frame'] = np.concatenate([df['frame'], f])
         df['time (s)'] = np.concatenate([df['time (s)'], time])
         df[f'radius {units}'] = np.concatenate([df[f'radius {units}'], lifespan])
         df['Standard deviations from mean'] = np.concatenate([df['Standard deviations from mean'], outlierness])
+        df['turnover'] = np.concatenate([df['turnover'], turnover])
         df['turnover (%)'] = np.concatenate([df['turnover (%)'], turnover])
+        df['turnover (% max)'] = np.concatenate([df['turnover (% max)'], turnover])
         df['platelet count'] = np.concatenate([df['platelet count'], count])
         df['dv (um/s)'] = np.concatenate([df['dv (um/s)'], dv])
+        df['dvz (um/s)'] = np.concatenate([df['dvz (um/s)'], dvz])
+        df['dvy (um/s)'] = np.concatenate([df['dvy (um/s)'], dvy])
         df['corrected calcium'] = np.concatenate([df['corrected calcium'], ca_corr])
         df['density (platelets/um^2)'] = np.concatenate([df['density (platelets/um^2)'], dens])
+        df['centre distance (um)'] = np.concatenate([df['centre distance (um)'], cd])
     df = pd.DataFrame(df)
     return df
         
@@ -742,6 +759,7 @@ def _stats_with_print(x_col, y_col, desc, data):
     return slope, intercept
 
 
+
 # ------------
 # Execute code
 # ------------
@@ -800,7 +818,7 @@ if __name__ == '__main__':
     paths = [os.path.join(d, n) for n in names]
     #max_loop_over_time_comparison(paths, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
     save_dir = '/Users/amcg0011/Data/platelet-analysis/TDA/treatment_comparison'
-    save_name = 'saline_biva_cang_sq_mips_PH-data-all.csv'
+    save_name = '220929_all-treatments_PH-data.csv'
     save_path = os.path.join(save_dir, save_name)
     #max_loop_over_time_data(paths, save_path, centile=75, col='nb_density_15_pcntf', y_col='ys_pcnt', x_col='x_s_pcnt', units='%')
     df = pd.read_csv(save_path)

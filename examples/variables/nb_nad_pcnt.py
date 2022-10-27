@@ -16,7 +16,10 @@ def add_local_dens_and_pcnt_for_PH(df, sp):
 
 d = '/Users/amcg0011/Data/platelet-analysis/dataframes'
 
-dataframes = ['211206_biva_df.parquet', '211206_cang_df.parquet', '211206_sq_df.parquet']
+#dataframes = ['211206_ctrl_df.parquet', '211206_cang_df.parquet', '211206_sq_df.parquet']
+dataframes = ['211206_ctrl_df.parquet', '211206_par4--_df.parquet', 
+              '211206_par4--biva_df.parquet', '211206_salgav_df.parquet', 
+              '211206_salgav-veh_df.parquet', '211206_veh-sq_df.parquet']
 
 for sn in dataframes:
     sp = os.path.join(d, sn)
