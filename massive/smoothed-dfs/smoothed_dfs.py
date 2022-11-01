@@ -2,7 +2,8 @@ import pandas as pd
 import napari 
 from tqdm import tqdm
 from plateletanalysis.variables.transform import spherical_coordinates
-from plateletanalysis.variables.measure import finite_difference_derivatives, add_finite_diff_derivative, contractile_motion
+from plateletanalysis.variables.measure import finite_difference_derivatives, add_finite_diff_derivative, contractile_motion, \
+     quantile_normalise_variables_frame, quantile_normalise_variables
 from plateletanalysis.variables.neighbours import add_neighbour_lists, local_density, local_calcium
 from plateletanalysis.variables.transform import spherical_coordinates
 
@@ -69,56 +70,38 @@ def new_neighbours(df):
     return df
 
 
-
-# -------------
-# VISUALISATION
-# -------------
-
-
-def get_tracks(df, cols=('frame', 'zs', 'ys', 'x_s')):
-    tracks = df[list(cols)].values
-    return tracks
-
-
-
-def display_all_tracks(df):
-    files = pd.unique(df['path'])
-    v = napari.Viewer()
-    for f in files:
-        f_df = df[df['path'] == f]
-        tracks = get_tracks(f_df, ('particle', 'frame', 'zs', 'ys', 'x_s'))
-        v.add_tracks(tracks, properties=f_df, name=f, visible=False)
-    napari.run()
-
+def quantile_normalisations(df):
+    df = quantile_normalise_variables(df, ['x_s', 'ys', 'zs'])
+    df = quantile_normalise_variables_frame(df, ['nb_density_15', 'nb_density_10'])
+    return df
 
 
 if __name__ == '__main__':
-    import os
-    d = '/Users/amcg0011/Data/platelet-analysis/dataframes'
-    mips_n = '211206_mips_df_220818.parquet'
-    dmso_n = '211206_veh-mips_df_220831.parquet'
-    mpath = os.path.join(d, mips_n)
-    dpath = os.path.join(d, dmso_n)
-    df = pd.read_parquet(dpath)
-    #df = smooth_coords(df)
-    save_path = os.path.join(d, 'dmso_df_smoothed-10.parquet')
-    #df.to_parquet(save_path)
-
-    #save_path = os.path.join(d, 'mips_df_smoothed-10.parquet')
-    #save_path = os.path.join(d, 'mips_df_smoothed.parquet')
-    #df.to_parquet(save_path)
-
-    df = pd.read_parquet(save_path)
-    if 'pid' not in df.columns.values:
-        df['pid'] = range(len(df))
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('-f', '--file', help='parquet file platelet info')
+    p.add_argument('-s', '--save', help='parquet file into which to save output')
+    args = p.parse_args()
+    df_path = args.file
+    save_path = args.save
+    df = pd.read_parquet(df_path)
+    # smooth coords
+    df = smooth_coords(df)
+    df.to_parquet(save_path)
+    print(f'Computed smoothed coords for {df_path}')
+    # add spherical coords
     df = new_spherical_coords(df)
     df.to_parquet(save_path)
-
+    print(f'Computed spherical coords for {df_path}')
+    # recacluate velocities
     df = new_velocities(df)
     df.to_parquet(save_path)
-
+    print(f'Computed velocities for {df_path}')
+    # neighbour variables
     df = new_neighbours(df)
     df.to_parquet(save_path)
-
-    df = df.dropna(subset=['dv', 'dvz', 'dvy', 'dvx', 'cont', 'phi_diff', 'rho_diff', 'theta_diff'])
-    display_all_tracks(df)
+    print(f'Computed neighbours for {df_path}')
+    # quantile normalisation
+    df = quantile_normalisations(df)
+    df.to_parquet(save_path)
+    print(f'Computed quantile normalisation for {df_path}')

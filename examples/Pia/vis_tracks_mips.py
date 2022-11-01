@@ -15,7 +15,7 @@ cang_n = '220603_211206_cang_df_spherical-coords.parquet'
 sq_n = '211206_sq_df.parquet'
 
 
-path = os.path.join(d, mips_n)
+path = os.path.join(d, saline_n)
 df = pd.read_parquet(path)
 df = df[df['nrtracks'] > 10]
 if 'phi' not in df.columns.values:

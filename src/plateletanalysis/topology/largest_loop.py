@@ -383,7 +383,17 @@ def get_treatment_name(inh): # need to rename from last run
 # -----------------------------
 
 
-def find_max_donut_time(df, sn=None, sd=None, p='path', tx='treatment', t='time (s)', y='difference from mean (std dev)', lose=1, thresh=6):
+def find_max_donut_time(
+        df, 
+        sn=None, 
+        sd=None, 
+        p='path', 
+        tx='treatment', 
+        t='time (s)', 
+        y='difference from mean (std dev)', 
+        lose=0.5, 
+        thresh=6
+    ):
     #adf = find_smoothed_average(df, tx, t, y)
     df = rolling_variable(df, p=p, t=t, y=y)
     y = y + ' rolling'

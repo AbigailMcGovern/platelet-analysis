@@ -191,6 +191,7 @@ def local_density(df, r=15, z_max=66):
                 densities.append(density)
                 progress.update(1)
             df.loc[idxs, f'nb_density_{r}'] = densities
+    df = df.reset_index()
     return df
 
 
