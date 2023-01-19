@@ -1,3 +1,4 @@
+from tokenize import group
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
@@ -190,6 +191,7 @@ def local_density(df, r=15, z_max=66):
                 densities.append(density)
                 progress.update(1)
             df.loc[idxs, f'nb_density_{r}'] = densities
+    df = df.reset_index()
     return df
 
 
@@ -222,9 +224,9 @@ def local_calcium(df, r=15):
             fdf = df[df['path'] == f]
             for t in range(t_max):
                 tdf = fdf[fdf['frame'] == t]
+                pids = tdf.index.values
                 df1 = tdf.reset_index()
                 df1 = df1.set_index('particle')
-                pids = tdf.index.values
                 for p in pids:
                     ca_mean = get_calcium(df, df1, r, p)
                     df.loc[p, f'nb_ca_corr_{r}'] = ca_mean
@@ -245,6 +247,43 @@ def get_calcium(df, df1, r, pid):
     return mean
 
 
+def local_variable_mean(df, var, r=15):
+    files = pd.unique(df['path'])
+    if 'level_0' in df.columns.values:
+        df = df.drop(columns=['level_0'])
+    df = df.set_index('pid')
+    t_max = df['frame'].max()
+    with tqdm(total=len(files)*t_max) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            for t in range(t_max):
+                tdf = fdf[fdf['frame'] == t]
+                pids = tdf.index.values
+                df1 = tdf.reset_index()
+                df1 = df1.set_index('particle')
+                for p in pids:
+                    mean = get_variable(df, df1, r, p, var)
+                    df.loc[p, f'nb_{var}_{r}'] = mean
+                progress.update(1)
+    df = df.reset_index()
+    return df
+
+
+
+def get_variable(df, df1, r, pid, var):
+    row = df.loc[pid, :]
+    nbs = row[f'nb_particles_{r}']
+    nbs = _ensure_list(nbs)
+    if len(nbs) > 0:
+        vals = [df1.loc[nb, var] for nb in nbs]
+        mean = numpy_nan_mean(vals)
+    else:
+        mean = 0
+    return mean
+
+
+def numpy_nan_mean(a):
+    return np.NaN if np.all(a!=a) else np.nanmean(a)
 
 # ----------------------
 # Local Dynamic Measures

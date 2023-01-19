@@ -645,6 +645,29 @@ def quantile_normalise_variables(
     return df
 
 
+
+def quantile_normalise_variables_frame(
+        df, 
+        vars=('nb_density_15', )
+    ):
+    files = pd.unique(df['path'])
+    t_max = df['frame'].max()
+    with tqdm(total=len(files)*len(vars)*t_max) as progress:
+        for f in files:
+            fdf = df[df['path'] == f]
+            for t in range(t_max):
+                t_df = fdf[fdf['frame'] == t]
+                for v in vars:
+                    vn = v + '_pcntf'
+                    idxs = t_df.index.values
+                    values = t_df[v].values
+                    percentiles = np.array([percentileofscore(values, d) for d in values])
+                    df.loc[idxs, vn] = percentiles
+                    progress.update(1)
+    return df
+
+
+
 # ---------------
 # Smooth variable
 # ---------------
@@ -668,4 +691,6 @@ def smooth_variables(
                     df.loc[idxs, vn] = rolling
             progress.update(1)
     return df
+
+
 

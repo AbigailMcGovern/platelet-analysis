@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from plateletanalysis.analysis.clustering import umap_dbscan_cluster, plot_clusters
-from plateletanalysis.analysis.scatter import multi_basic_scatter_save
+from plateletanalysis.visualise.scatter import multi_basic_scatter_save
 from datetime import datetime
 
 d = '/fs02/rl54/dataframes'

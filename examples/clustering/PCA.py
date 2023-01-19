@@ -1,5 +1,5 @@
 from plateletanalysis.analysis.clustering import PCA_objects, PCA_all, PCA_corr, cross_corr
-from plateletanalysis.analysis.scatter import basic_scatter
+from plateletanalysis.visualise.scatter import basic_scatter
 
 import pandas as pd
 import os
