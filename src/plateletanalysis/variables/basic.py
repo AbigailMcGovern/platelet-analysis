@@ -299,3 +299,35 @@ def tracked_variable(df):
     df['tracked'] = df['nrtracks'] > 1
     return df
 
+
+
+def get_treatment_name(inh): # need to rename from last run 
+    if 'saline' in inh:
+        out = 'saline'
+    elif 'cang' in inh:
+        out = 'cangrelor'
+    elif 'veh-mips' in inh:
+        out = 'MIPS vehicle'
+    elif 'mips' in inh or 'MIPS' in inh:
+        out = 'MIPS'
+    elif 'sq' in inh:
+        out = 'SQ'
+    elif 'par4--biva' in inh:
+        out = 'PAR4-- bivalirudin'
+    elif 'par4--' in inh:
+        out = 'PAR4--'
+    elif 'biva' in inh:
+        out = 'bivalirudin'
+    elif 'SalgavDMSO' in inh or 'gavsalDMSO' in inh or 'galsavDMSO' in inh:
+        out = 'DMSO (salgav)'
+    elif 'Salgav' in inh or 'gavsal' in inh:
+        out = 'salgav'
+    elif 'DMSO' in inh:
+        out = 'DMSO (MIPS)'
+    elif 'dmso' in inh:
+        out = 'DMSO (SQ)'
+    elif 'ctrl' in inh:
+        out = 'control'
+    else:
+        out = inh
+    return out

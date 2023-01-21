@@ -1,4 +1,3 @@
-from turtle import st
 from ripser import ripser
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +12,7 @@ from plateletanalysis.variables.measure import quantile_normalise_variables, qua
 from plateletanalysis.variables.position import scale_free_positional_categories, count_variables, transitions
 from scipy.signal import find_peaks
 from plateletanalysis.variables.neighbours import add_neighbour_lists, local_density
+from sklearn.preprocessing import StandardScaler
 
 
 
@@ -23,105 +23,164 @@ from plateletanalysis.variables.neighbours import add_neighbour_lists, local_den
 # -----------------------------------------------------------------------------
 
 def largest_loop_data(
-        df, 
-        centile=75,
-        col='nb_density_15_pcntf', 
-        y_col='ys_pcnt', 
-        x_col='x_s_pcnt', 
-        get_accessory_data=False, 
+        df : pd.DataFrame, 
+        sample_col='path', 
+        time_col='frame',
+        sample_n=200,
+        n_samples=100,
+        centile=50,
+        filter_col='nb_density_15_pcntf', 
+        y_col='ys', 
+        x_col='x_s', 
+        #get_accessory_data=False, 
         units='%'
     ):
-    data = df[df[col] > centile]
-    data = data[['frame', x_col, y_col, 'path']]
-    injuries = pd.unique(data['path'])
-    frames = []
-    deaths = []
-    births = []
-    lifespan = []
-    outlierness = []
-    paths = []
-    tx_name = get_treatment_name(data['path'].values[0])
-    desc=f'Getting max barcode data for treatment = {tx_name}'
-    n_its = len(paths)
-    with tqdm(desc=desc, total=n_its) as progress:
-        for inj in injuries:
-            inj_data = data[data['path'] == inj]
-            out_dict = get_outlier_info_for_data(inj_data, x_col, y_col)
-            #out_dict['path'] = [inj, ] * len()
-            paths_new = [inj, ] * len(out_dict['frame'])
-            paths = paths + paths_new
-            frames = frames + out_dict['frame']
-            deaths = deaths + out_dict['deaths']
-            births = births + out_dict['births']
-            lifespan = lifespan + out_dict['lifespan']
-            outlierness = outlierness + out_dict['outlierness']
-            tx_name = get_treatment_name(inj)
-            tx = [tx_name, ] * len(outlierness)
-            progress.update(1)
-    out = {
-        'path' : paths, 
-        'treatment' : tx, 
-        'frame' : frames, 
-        'time (s)' : np.array(frames) / 0.321764322705706,
-        f'birth radius ({units})' : births, 
-        f'death radius ({units})' : deaths, 
-        'difference from mean (std dev)' : outlierness, 
-        f'persistence ({units})' : lifespan, 
-        'treatment' : [tx_name, ] * len(frames)
+    # only the upper centiles of the data (e.g., density, fibrin, p selectin)
+    df = df[df[filter_col] > centile]
+    df = scale_x_and_y(df)
+    y_col_s = y_col + '_scaled'
+    x_col_s = x_col + '_scaled'
+    data_cols = [sample_col, x_col_s, y_col_s]
+    if time_col is not None:
+        data_cols.append(time_col)
+    df = df[data_cols]
+    samples = pd.unique(data[sample_col])
+    ph_data = initialise_PH_data_dict()
+    samples = pd.unique(df[sample_col])
+    #tx_name = get_treatment_name(data['path'].values[0])
+    #desc=f'Getting max barcode data for treatment = {tx_name}'
+    n_its = len(samples) * n_samples
+    with tqdm(total=n_its) as progress:
+        for sample, data in df.groupby([sample_col, ]):
+            for bs_id in range(n_samples):
+                data = data.sample(n=sample_n)
+                sample_persistent_homology_analysis(data, x_col_s, y_col_s, 
+                                                    ph_data, sample_col, 
+                                                    time_col, sample, bs_id)
+                progress.update(1)
+    ph_data = pd.DataFrame(ph_data)
+    if time_col is not None:
+        ph_data['time (s)'] = ph_data[time_col]
+    #if get_accessory_data:
+     #   _, donut_info = find_max_donut_time(out)
+      #  out = accessory_platelet_data(out, df, donut_info)
+    return ph_data
+
+
+
+def initialise_PH_data_dict(sample_col, time_col):
+    ph_data = {
+        'boottrap_id' : [],
+        'birth_1' : [],
+        'birth_2' : [],
+        'birth_mean' : [],
+        'birth_std' : [],
+        'death_1' : [], 
+        'death_2' : [], 
+        'death_mean' : [],
+        'death_std' : [],
+        'persistence_1' : [],
+        'persistence_2' : [], 
+        'persistence_mean' : [],
+        'persistence_std' : [],
+        'outlierness_1' : [], 
+        'outlierness_2' : [],
+        'outlierness_mean' : [],
+        'outlierness_std' : [],
+        'donutness' : []
     }
-    out = pd.DataFrame(out)
-    if get_accessory_data:
-        _, donut_info = find_max_donut_time(out)
-        out = accessory_platelet_data(out, df, donut_info)
-    return out
+    ph_data[sample_col] = []
+    if time_col is not None:
+        ph_data[time_col] = []
+    return ph_data
 
 
 
-def get_outlier_info_for_data(data, x_col, y_col):
-    frames = list(range(data['frame'].max()))
-    deaths = []
-    births = []
-    lifespan = []
-    outlierness = []
-    path = []
+def sample_persistent_homology_analysis(
+        data, 
+        x_col, 
+        y_col, 
+        ph_data, 
+        sample_col, 
+        time_col, 
+        sample, 
+        bootstrap_id
+    ):
+    if time_col is not None:
+        frames = list(range(data[time_col].max()))
+    else:
+        frames = [0, ]
     for t in frames:
-        data_t = data[data['frame'] == t]
+        if time_col is not None:
+            data_t = data[data['frame'] == t]
+            ph_data[time_col].append(t)
+        else:
+            data_t = data
         X = data_t[[x_col, y_col]].values
+        ph_data[sample_col].append(sample)
+        ph_data['bootstrap_id'].append(bootstrap_id)
         if len(X) > 0:
             dgms = ripser(X)['dgms']
             h1 = dgms[1]
             #print(h1)
-            if len(h1) > 0:
-                diff = h1[:, 1] - h1[:, 0]
-                i = np.argmax(diff)
-                std = np.std(diff)
-                mean = np.mean(diff)
-                max = diff[i]
-                std_from_mean = (max - mean) / std
-                outlierness.append(std_from_mean)
-                lifespan.append(diff[i])
-                deaths.append(h1[i, 1])
-                births.append(h1[i, 0])
+            if len(h1) > 1:
+                births = h1[:, 0]
+                deaths = h1[:, 1]
+                persistence = deaths - births
+                idxs = np.argsort(persistence)
+                # births
+                ph_data['birth_1'].append( births[idxs[-1]])
+                ph_data['birth_s'].append(births[idxs[-2]])
+                ph_data['birth_mean'].append(np.mean(births))
+                ph_data['birth_std'].append(np.std(births))
+                # deaths
+                ph_data['death_1'].append(deaths[idxs[-1]])
+                ph_data['death_2'].append(deaths[idxs[-2]])
+                ph_data['death_mean'].append(np.mean(deaths))
+                ph_data['death_std'].append(np.std(deaths))
+                # persistence
+                ph_data['persistence_1'].append(persistence[idxs[-1]])
+                ph_data['persistence_2'].append(persistence[idxs[-1]])
+                persistence_mean = np.mean(persistence)
+                ph_data['persistence_mean'].append(persistence_mean)
+                persistence_std = np.std(persistence)
+                ph_data['persistence_std'].append(persistence_std)
+                # outlierness
+                outlierness = (persistence - persistence_mean) / persistence_std
+                outlierness_1 = outlierness[idxs[-1]]
+                ph_data['outlierness_1'].append(outlierness_1)
+                outlierness_2 = outlierness[idxs[-2]]
+                ph_data['outlierness_2'].append(outlierness_2)
+                ph_data['outlierness_mean'].append(np.mean(outlierness))
+                ph_data['outlierness_std'].append(np.std(outlierness))
+                # donutness
+                ph_data['donutness'] = outlierness_1 - outlierness_2
             else:
-                lifespan.append(np.NaN)
-                births.append(np.NaN)
-                deaths.append(np.NaN)
-                outlierness.append(np.NaN)
+                append_NaN(ph_data, sample_col, time_col)
         else:
-            lifespan.append(np.NaN)
-            births.append(np.NaN)
-            deaths.append(np.NaN)
-            outlierness.append(np.NaN)
-    out = {
-        'frame' : frames, 
-        'births' : births, 
-        'deaths' : deaths, 
-        'outlierness' : outlierness, 
-        'lifespan' : lifespan
-    }
-    return out
+            append_NaN(ph_data, sample_col, time_col)
+    
+    return ph_data
 
 
+
+def append_NaN(ph_data, sample_col, time_col):
+    for k in ph_data.keys():
+        if k != sample_col and k != time_col and k != 'bootstrap_id':
+            ph_data[k].append(np.NaN)
+
+
+
+
+# ---------------
+# Additional Data
+# ---------------
+
+#TODO: Please change this function to add mean data to existing dataframe
+# -i.e., move this to another module and make usable for any summary table:
+#           - with path + frame
+#           - for any categorical/condition 
+#           (e.g., exp @ frame 100, only surface platelets) 
 
 def accessory_platelet_data(
         out, 
@@ -482,4 +541,33 @@ def rolling_variable(df, p='path', t='time (s)', y='difference from mean (std de
         idx = g.index.values
         rolling = g[y].rolling(window=20,win_type='bartlett',min_periods=3,center=True).mean()
         df.loc[idx, n] = rolling
+    return df
+
+
+
+# -------
+# Helpers
+# -------
+
+
+def scale_x_and_y(df, x_col='x_s', y_col='ys'):
+    df = df[df['nrtracks'] > 10]
+    #if 'nb_density_15_pcntf' not in df.columns.values:
+     #   df = quantile_normalise_variables_frame(df, ('nb_density_15', ))
+    df = scale_data(df, x_col)
+    df = scale_data(df, y_col)
+    return df
+
+
+
+def scale_data(df, col, groupby_list=['path', 'frame']):
+    for k, g in df.groupby(groupby_list):
+        scaler = StandardScaler()
+        data = g[col].values
+        data = np.expand_dims(data, 1)
+        scaler.fit(data)
+        new = scaler.transform(data)
+        new = np.squeeze(new)
+        idx = g.index.values
+        df.loc[idx, f'{col}_scaled'] = new
     return df
