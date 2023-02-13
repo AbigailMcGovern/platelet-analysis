@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import seaborn as sns
 import matplotlib.pyplot as plt
-from plateletanalysis.topology.largest_loop import find_max_donut_time
+from plateletanalysis.topology.donutness import find_max_donut_time
 import numpy as np
 
 

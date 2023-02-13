@@ -114,6 +114,18 @@ def minute_var(df):
     return df
 
 
+def time_seconds(df):
+    df['time (s)'] = df['frame'] / 0.321764322705706
+    return df
+
+
+def time_minutes(df):
+    if 'time (s)' not in df.columns:
+        df['time (s)'] = df['frame'] / 0.321764322705706
+    df.loc[:,'minute'] = pd.cut(df['time'], 10, labels=np.arange(1,11,1))
+    return df
+
+
 def phase_var(df):
     df.loc[:,'phase'] = pd.qcut(df['frame'], 3, labels=['Early','Mid','Late'])
     return df

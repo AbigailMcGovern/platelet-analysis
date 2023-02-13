@@ -22,7 +22,7 @@ from sklearn.preprocessing import StandardScaler
 # ------------------------------
 # -----------------------------------------------------------------------------
 
-def largest_loop_data(
+def donutness_data(
         df : pd.DataFrame, 
         sample_col='path', 
         time_col='frame',
@@ -543,6 +543,107 @@ def rolling_variable(df, p='path', t='time (s)', y='difference from mean (std de
         df.loc[idx, n] = rolling
     return df
 
+
+
+# --------------
+# Simulated data
+# --------------
+
+
+def simulate_disc(sigma, size, r=100):
+    sigma = r * sigma
+    x = np.random.normal(scale=sigma, size=size)
+    y = np.random.normal(scale=sigma, size=size)
+    #y_pcnt = np.array([percentileofscore(y, v) for v in y])
+    #x_pcnt = np.array([percentileofscore(x, v) for v in x])
+    result = np.stack([x, y]).T
+    return result
+
+
+
+def simulate_1_loop(sigma, size, r=25):
+    result = _loop_coords(size, sigma, r)
+    return result
+
+
+
+def simulate_2_loop(sigma, size):
+    res_0 = _loop_coords(size, sigma, r=12.5)
+    res_1 = _loop_coords(size, sigma, r=12.5)
+    res_0 = res_0 + [-12.5, 0]
+    res_1 = res_1 + [12.5, 0]
+    result = np.concatenate([res_0, res_1])
+    return result
+
+
+
+def _loop_coords(n, s, r):
+    s = r * s
+    theta = np.linspace( 0 , 2 * np.pi , n)
+    radius = r
+    x = radius * np.cos( theta )
+    y = radius * np.sin( theta )
+    noise_x = np.random.normal(scale=s, size=n)
+    noise_y = np.random.normal(scale=s, size=n)
+    x = x + noise_x
+    y = y + noise_y
+    result = np.stack([x, y]).T
+    result = result + 50
+    return result
+
+
+def generate_simulated_data(
+        save_path,
+        n=30, 
+        sizes=(25, 50, 100, 200, 400, 800),
+        sigmas=(0.2, 0.3, 0.4)
+        ):
+    df = {
+        'sample_ID' : [],
+        'distribution' : [],
+        'sigma' : [],
+        'size' : [],
+        'sample_ID' : [],
+        'x' : [], 
+        'y' : [], 
+    }
+    func_dict = {
+        'disc' : simulate_disc, 
+        '1-loop' : simulate_1_loop,
+        '2-loop' : simulate_2_loop
+    }
+    dists = list(func_dict.keys())
+    sample_ID = 0
+    its = len(sizes) * len(sigmas) * len(dists) * n
+    with tqdm(total=its) as progress:
+        for sigma in sigmas:
+            for size in sizes:
+                for dist in dists:
+                    for i in range(n):
+                        func = func_dict[dist]
+                        result = func(sigma, size)
+                        d = [dist, ] * len(result)
+                        sig = [sigma, ] * len(result)
+                        sz = [size, ] * len(result)
+                        df['distribution'] = np.concatenate([df['distribution'], d])
+                        df['sigma'] = np.concatenate([df['sigma'], sig])
+                        df['size'] = np.concatenate([df['size'], sz])
+                        df['x'] = np.concatenate([df['x'], result[:, 0]])
+                        df['y'] = np.concatenate([df['y'], result[:, 1]])
+                        sid = [sample_ID, ] * len(result)
+                        df['sample_ID'] = np.concatenate([df['sample_ID'], sid])
+                        sample_ID += 1
+                        progress.update(1)
+    df = pd.DataFrame(df)
+    df.to_csv(save_path)
+
+
+def simulated_data_matrix_plot(
+        func='1_loop'
+        sizes=(25, 50, 100, 200, 400, 800),
+        sigmas=(0.2, 0.3, 0.4)    
+    ):
+    pass
 
 
 # -------
