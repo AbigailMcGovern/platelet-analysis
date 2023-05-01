@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from toolz import curry
-from plateletanalysis.variables.basic import quantile_normalise_variables
+from plateletanalysis.variables.basic import quantile_normalise_variables, add_tracknr, add_nrtracks, size_var
 from plateletanalysis.variables.neighbours import local_density, add_neighbour_lists
 from plateletanalysis.variables.transform import spherical_coordinates
 import os
@@ -107,10 +107,9 @@ def p_recruited_gt60(df):
     t = len(df[df['tracknr'] == 1])
     return p / t
 
-
 # looping function
 
-def loop_over_exp_region(df, exp_col, time_col, val_col, val_func, other_cols):
+def loop_over_exp_region(df, exp_col, time_col, val_col, val_func, other_cols, size):
     if isinstance(other_cols, str):
         other_cols = [other_cols, ]
     out = {
@@ -122,8 +121,12 @@ def loop_over_exp_region(df, exp_col, time_col, val_col, val_func, other_cols):
     for oc in other_cols:
         out[oc] = []
     nits = len(pd.unique(df[exp_col])) * len(pd.unique(df[time_col])) * len(pd.unique(df['region']))
+    if size:
+        gb = [exp_col, time_col, 'region', 'size']
+    else:
+        gb = [exp_col, time_col, 'region']
     with tqdm(total=nits) as progress:
-        for k, g in df.groupby([exp_col, time_col, 'region']): # would have done groupby apply, but I don't care
+        for k, g in df.groupby(gb): # would have done groupby apply, but I don't care
             val = val_func(g)
             out[exp_col].append(k[0])
             out[val_col].append(val)
@@ -137,24 +140,37 @@ def loop_over_exp_region(df, exp_col, time_col, val_col, val_func, other_cols):
     return out
 
 
-def generate_var_dict():
-    var_dict = {
-        #'platelet count' : [count, None], 
-        #'platelet density (um^-3)' : [density, ['nb_density_15', ]], 
-        #'thrombus edge distance (um)' : [outer_edge, ['rho', (90, 98)]], 
-        'recruitment (s^-1)' : [recruitment, None], 
-        'shedding (s^-1)' : [shedding, None], 
-        'mean stability' : [stability, None], 
-        'mean tracking time (s)' : [tracking_time, None], 
-        'sliding (ums^-1)' : [sliding, None], 
-        'proportion < 15 s' : [p_lt15s, None], 
-        'proportion > 60 s' : [p_gt60s, None], 
-        'tracking time IQR (s)' : [tracking_time_IQR, None], 
-        'proportion shed < 15 s' : [p_shed_lt15, None], 
-        'proportion shed > 60 s' : [p_shed_gt60, None], 
-        'proportion recruited < 15 s' : [p_recruited_lt15, None], 
-        'proportion recruited > 60 s' : [p_recruited_gt60, None]
-    }
+def generate_var_dict(ttype):
+    if ttype == 'minute' or ttype == 'hsec':
+        var_dict = {
+            'platelet count' : [count, None], 
+            'platelet density (um^-3)' : [density, ['nb_density_15', ]], 
+            'thrombus edge distance (um)' : [outer_edge, ['rho', (90, 98)]], 
+            'recruitment (s^-1)' : [recruitment, None], 
+            'shedding (s^-1)' : [shedding, None], 
+            'mean stability' : [stability, None], 
+            'mean tracking time (s)' : [tracking_time, None], 
+            'sliding (ums^-1)' : [sliding, None], 
+            'proportion < 15 s' : [p_lt15s, None], 
+            'proportion > 60 s' : [p_gt60s, None], 
+            'tracking time IQR (s)' : [tracking_time_IQR, None], 
+            'proportion shed < 15 s' : [p_shed_lt15, None], 
+            'proportion shed > 60 s' : [p_shed_gt60, None], 
+            'proportion recruited < 15 s' : [p_recruited_lt15, None], 
+            'proportion recruited > 60 s' : [p_recruited_gt60, None]
+        }
+    elif ttype == 'seccond':
+        var_dict = {
+            'platelet count' : [count, None], 
+            'platelet density (um^-3)' : [density, ['nb_density_15', ]], 
+            'thrombus edge distance (um)' : [outer_edge, ['rho', (90, 98)]], 
+            'mean stability' : [stability, None], 
+            'mean tracking time (s)' : [tracking_time, None], 
+            'sliding (ums^-1)' : [sliding, None], 
+            'proportion < 15 s' : [p_lt15s, None], 
+            'proportion > 60 s' : [p_gt60s, None], 
+            'tracking time IQR (s)' : [tracking_time_IQR, None], 
+        }
     return var_dict
 
 
@@ -168,8 +184,11 @@ def lineplots_regions_data_all(
         controls=('DMSO (MIPS)', 'DMSO (SQ)', 'saline'),
         exp_col='path',
         time_col='time (s)',
-        track_lim=10,
-        other_cols=('treatment', ), 
+        track_lim=1,
+        other_cols=('treatment', 'size'), 
+        mean_cols=('ca_corr', 'stab', 'dvy'),
+        only_large=True, 
+        size=False
         #names=('platelet count', 'platelet density (um^-3)', 'thrombus edge distance (um)', 
          #      'recruitment (s^-1)', 'shedding (s^-1)', 'mean stability', 
           #     'dvy (um s^-1)', 'mean tracking time (s)', 'sliding (ums^-1)', 
@@ -181,12 +200,26 @@ def lineplots_regions_data_all(
         other columns to collect values for. Takes only the first value in group. 
         The first value in other_cols will be used as the hue for sns.lineplot. 
     '''
-    var_dict = generate_var_dict()
+    if only_large:
+        size = False
+    if size:
+        df = size_var(df)
+        print(df.columns.values)
+    if only_large:
+        df = size_var(df)
+        mips = df[df['treatment'] == 'MIPS']
+        print(mips.columns.values)
+        dmso = df[df['treatment'] == 'DMSO (MIPS)']
+        other = df[(df['treatment'] != 'MIPS') & (df['treatment'] != 'DMSO (MIPS)')]
+        mips = mips[mips['size'] == 'large']
+        dmso = dmso[dmso['size'] == 'large']
+        df = pd.concat([mips, dmso, other]).reset_index(drop=True)
     names = list(var_dict.keys())
     funcs = [var_dict[n][0] for n in names]
     curry_with = [var_dict[n][1] for n in names]
     df = df[df['nrtracks'] > track_lim]
     df = add_region_category(df)
+    #debugging_func(df)
     data = []
     ind_save = [os.path.join(Path(save_path).parents[0], Path(save_path).stem + f'_{n}.csv') for n in names]
     for i, func in enumerate(funcs):
@@ -196,7 +229,8 @@ def lineplots_regions_data_all(
             cw = curry_with[i]
             if cw is not None:
                 func = func(*cw)
-            result = loop_over_exp_region(df, exp_col,time_col, n, func, other_cols)
+            result = loop_over_exp_region(df, exp_col,time_col, n, func, other_cols, size)
+            #debugging_func(result)
             result.to_csv(ind_save[i])
         else:
             result = pd.read_csv(ind_save[i])
@@ -205,12 +239,13 @@ def lineplots_regions_data_all(
         #TODO: separate script for plotting data
     data = pd.concat(data, axis=1)
     data = data.reset_index(drop=False)
+    #debugging_func(data)
     tx = data[other_cols[0]].values
     if 'Unnamed: 0' in data.columns.values:
         data = data.drop(columns=['Unnamed: 0', ])
     data = data.drop(columns=[other_cols[0], ])
     data[other_cols[0]] = tx[:, 0]
-    data[:10].to_csv('/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/debugging.csv')
+    #data[:10].to_csv('/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/debugging.csv')
     # percentage data
     for n in names:
         nn = f'{n} pcnt'
@@ -230,6 +265,7 @@ def lineplots_regions_data_all(
                     pcnt = g[n].values / v_means[n] * 100
                     data.loc[idxs, nn] = pcnt
                     progress.update(1)
+    #debugging_func(data)
     data.to_csv(save_path)
 
 
@@ -292,7 +328,7 @@ def add_sliding_variable(df):
     sdf = df[df['dvy'] >= 0]
     idxs = sdf.index.values
     df.loc[idxs, 'sliding (ums^-1)'] = 0
-    # moving in the direction of blood floe
+    # moving in the direction of blood flow
     sdf = df[df['dvy'] < 0]
     idxs = sdf.index.values
     new = np.abs(sdf['dvy'].values)
@@ -315,6 +351,10 @@ def add_terminating(df):
     return df
 
 
+def debugging_func(df):
+    mips = pd.unique(df[df['treatment'] == 'MIPS'].path)
+    if len(mips) < 19:
+        raise ValueError
 
 if __name__ == '__main__':
     from plateletanalysis.variables.basic import get_treatment_name, time_minutes
@@ -325,28 +365,59 @@ if __name__ == '__main__':
     d = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes'
     file_names = ('211206_mips_df.parquet', '211206_veh-mips_df.parquet', 
                   '211206_cang_df.parquet', '211206_saline_df_220827_amp0.parquet', 
-                  '211206_sq_df.parquet', '211206_veh-sq_df.parquet')
+                  '211206_sq_df.parquet', '211206_veh-sq_df.parquet', '230301_MIPS_and_DMSO.parquet')
     file_paths = [os.path.join(d, n) for n in file_names]
     #dfs = [pd.read_parquet(p) for p in file_paths]
     data = []
     for p in file_paths:
         df = pd.read_parquet(p)
+        df['treatment'] = df['path'].apply(get_treatment_name)
+        df.to_parquet(p)
+        if 'nrtracks' not in df.columns.values:
+            df = add_nrtracks(df)
+            df.to_parquet(p)
+        if 'tracknr' not in df.columns.values:
+            df = add_tracknr(df)
+            df.to_parquet(p)
+        if 'time (s)' not in df.columns.values:
+            df = add_time_seconds(df)
+            df.to_parquet(p)
+        if 'terminating' not in df.columns.values:
+            df = add_terminating(df)
+            df.to_parquet(p)
+        if 'sliding (ums^-1)' not in df.columns.values:
+            df = add_sliding_variable(df)
+            df.to_parquet(p)
+        if 'minute' not in df.columns.values:
+            df = time_minutes(df)
+            df.to_parquet(p)
+        if 'minute' not in df.columns.values:
+            df = time_minutes(df)
+            df.to_parquet(p)
+        if 'total time tracked (s)' not in df.columns.values:
+            df = time_tracked_var(df)
+            df.to_parquet(p)
+        if 'tracking time (s)' not in df.columns.values:
+            df = tracking_time_var(df)
+            df.to_parquet(p)
         data.append(df)
     df = pd.concat(data).reset_index(drop=True)
     del data
 
-
-    # -------------
+    # ------------- 
     # Add variables
     # -------------
-    df['treatment'] = df['path'].apply(get_treatment_name)
-    df = df[df['treatment'] != 'DMSO (salgav)']
-    df = add_time_seconds(df)
-    df = add_terminating(df)
-    df = add_sliding_variable(df)
-    df = time_minutes(df)
-    df = time_tracked_var(df)
-    df = tracking_time_var(df)
+    #df['treatment'] = df['path'].apply(get_treatment_name)
+    for k, g in df.groupby('treatment'):
+        print(k, len(pd.unique(g['path'])))
+    #df = df[df['treatment'] != 'DMSO (salgav)']
+    #df = add_time_seconds(df)
+    #df = add_terminating(df)
+    #df = add_sliding_variable(df)
+    #df = time_minutes(df)
+    #df = time_tracked_var(df)
+    #df = tracking_time_var(df)
+    #print([(k, len(pd.unique(g['path']))) for k, g in df.groupby('treatment')])
 
     # ------------------
     # Compute data frame
@@ -355,6 +426,31 @@ if __name__ == '__main__':
     #save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230212_regionsdata_8var_trk1.csv'
     #lineplots_regions_data_all(df, save_path, track_lim=1)
     #save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230212_regionsdata_8var_trk1_minute.csv'
-    save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230212_regionsdata_12var_trk1_minute.csv'
-    var_dict = generate_var_dict()
-    lineplots_regions_data_all(df, save_path, var_dict, track_lim=1, time_col='minute')
+    #save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230212_regionsdata_12var_trk1_minute.csv'
+    #save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230213_regionsdata_12var_trk1_minute.csv'
+    time_axes = ['seccond', 'minute', 'hsec']
+    which_time = time_axes[0]
+    only_large = False
+    size = True
+    if only_large:
+        nstr = '_MIPS-large'
+    elif not only_large and size:
+        nstr = '_sizes'
+    else:
+        nstr = ''
+    #save_path = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230214_regionsdata_12var_trk1_seconds.csv'
+    var_dict = generate_var_dict(ttype=which_time)
+    from datetime import datetime
+    now = datetime.now()
+    date = now.strftime("%y%m%d")
+    if which_time == 'minute':
+        save_path = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/{date}_regionsdata_12var_trk1_minute{nstr}.csv'
+        lineplots_regions_data_all(df, save_path, var_dict, track_lim=1, time_col='minute', only_large=only_large, size=size)
+    elif which_time == 'seccond':
+        save_path = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/{date}_regionsdata_9var_trk1_seconds{nstr}.csv'
+        lineplots_regions_data_all(df, save_path, var_dict, track_lim=1, only_large=only_large, size=size)
+    elif which_time == 'hsec':
+        from plateletanalysis.variables.basic import hsec_var
+        df = hsec_var(df)
+        save_path = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/{date}_regionsdata_12var_trk1_hsec{nstr}.csv'
+        lineplots_regions_data_all(df, save_path, var_dict, track_lim=1, time_col='hsec', only_large=only_large, size=size)

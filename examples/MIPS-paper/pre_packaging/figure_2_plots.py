@@ -111,7 +111,7 @@ def lineplots_data_all(
         controls=('DMSO (MIPS)', 'DMSO (SQ)', 'saline'),
         exp_col='path',
         time_col='time (s)',
-        track_lim=10,
+        track_lim=1,
         names=('platelet count', 'platelet density', 'thrombus edge distance'), 
         funcs=(count, density, outer_edge), 
         other_cols=('treatment', ), 
@@ -142,7 +142,8 @@ def lineplots_data_all(
         #TODO: separate script for plotting data
     data = pd.concat(data, axis=1)
     tx = data[other_cols[0]].values
-    data = data.drop(columns=[other_cols[0], 'Unnamed: 0'])
+    if 'Unnamed: 0' in data.columns.values:
+        data = data.drop(columns=[other_cols[0], 'Unnamed: 0'])
     data[other_cols[0]] = tx[:, 0]
     data = data.reset_index(drop=False).drop_duplicates()
     data[:10].to_csv('/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_2/debugging.csv')
@@ -190,10 +191,10 @@ def add_spherical_and_local_dens(data_dir, file_names):
 if __name__ == '__main__':
     from plateletanalysis.variables.basic import get_treatment_name
     d = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes'
-    mn = '211206_mips_df.parquet'
-    vmn = '211206_veh-mips_df.parquet'
-    mp = os.path.join(d, mn)
-    vmp = os.path.join(d, vmn)
+    #mn = ['211206_mips_df.parquet', ]
+    #vmn = '211206_veh-mips_df.parquet'
+    #mp = os.path.join(d, mn)
+    #vmp = os.path.join(d, vmn)
     # add local density and spherical - MIPS
     #m = pd.read_parquet(mp)
     #m = add_neighbour_lists(m)
@@ -208,9 +209,13 @@ if __name__ == '__main__':
     #vm.to_parquet(vmp)
     # generate plots
 
+    from datetime import datetime
+    now = datetime.now()
+    date = now.strftime("%y%m%d")
+
     file_names = ('211206_mips_df.parquet', '211206_veh-mips_df.parquet', 
                   '211206_cang_df.parquet', '211206_saline_df_220827_amp0.parquet', 
-                  '211206_sq_df.parquet', '211206_veh-sq_df.parquet')
+                  '211206_sq_df.parquet', '211206_veh-sq_df.parquet', '230301_MIPS_and_DMSO.parquet')
     file_paths = [os.path.join(d, n) for n in file_names]
     #dfs = [pd.read_parquet(p) for p in file_paths]
     dfs = []
@@ -236,11 +241,17 @@ if __name__ == '__main__':
            df.to_parquet(p)
         data.append(df)
     df = pd.concat(data)
+    del data
+    del dfs
     df['treatment'] = df['path'].apply(get_treatment_name)
+    print(df['treatment'].head())
+    df = df.drop_duplicates()
+    print(df['treatment'].head())
     df = df[df['treatment'] != 'DMSO (salgav)']
     df = add_time_seconds(df)
     save_dir = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_2'
-    save_path = os.path.join(save_dir, 'counts_density_outeredge_MIPS_cang_biva_tl10_oe9098.csv')
+    save_path = os.path.join(save_dir, f'{date}_counts_density_outeredge_MIPS_cang_biva_tl10_oe9098.csv')
+
     lineplots_data_all(df, save_path)
 
     #lineplots(df, 
