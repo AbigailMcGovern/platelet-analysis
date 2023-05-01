@@ -1,4 +1,4 @@
-from plateletanalysis.topology.largest_loop import largest_loop_comparison_data, plot_donut_comparison
+from plateletanalysis.topology.donutness import largest_loop_comparison_data, plot_donut_comparison
 import pandas as pd
 import numpy as np
 import os

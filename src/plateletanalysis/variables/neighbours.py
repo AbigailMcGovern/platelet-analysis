@@ -6,6 +6,7 @@ from toolz import curry
 from tqdm import tqdm
 from distributed import Client, as_completed
 from .measure import add_finite_diff_derivative
+from scipy import spatial
 
 
 # ------------------
@@ -389,3 +390,70 @@ def get_neighbour_df(df, p, max_dist):
     nbs = eval(p_row.loc[0, f'nb_particles_{max_dist}'])
     for n in nbs:
         sml_df = ...
+
+
+# ------------------
+# Neighbour Distance
+# ------------------
+
+def neighbour_distance(pc):
+    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours)
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1)
+    return t_grp
+
+
+def _nearest_neighbours(pc):
+    nb_count=3
+    key_dist={}
+    key_idx={}
+    #print(len(pc))
+    p1i=pc.reset_index().pid
+    if len(pc)>nb_count:
+        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
+        dmap_sorted=np.sort(dmap, axis=0)
+        dmap_idx_sorted=np.argsort(dmap, axis=0)
+        for i in range(nb_count):
+            nb_dist=(dmap_sorted[i+1,:])
+            nb_idx=dmap_idx_sorted[i+1,:]
+            key_dist['nb_d_' + str(i)]=nb_dist
+            key_idx['nb_i_' + str(i)]=pd.Series(nb_idx).map(p1i).values.astype('int').tolist()
+        key_idx.update(key_dist)
+    else:
+        a = np.empty((len(pc)))
+        a[:] = np.nan
+        key_idx['nb_i_0']=a
+    df=pd.DataFrame(key_idx)
+    df=pd.concat([p1i, df], axis=1)
+    return df
+
+
+def average_neighbour_distance(pc):
+    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours_average)
+    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()
+    return pc
+
+
+def _nearest_neighbours_average(pc):
+    nb_count=3
+    nba_list=[5,10,15]
+    key_dist={}
+    key_idx={}
+    #print(len(pc))
+    p1i=pc.reset_index().pid
+    if len(pc)>np.array(nba_list).max():
+        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
+        dmap_sorted=np.sort(dmap, axis=0)
+        #dmap_idx_sorted=np.argsort(dmap, axis=0)
+        for i in nba_list:
+            nb_dist=(dmap_sorted[1:(i+1),:]).mean(axis=0)
+            #nb_idx=dmap_idx_sorted[i+1,:]
+            key_dist['nba_d_' + str(i)]=nb_dist
+            #key_idx['nb_i_' + str(i)]=pd.Series(nb_idx).map(p1i).values.astype('int').tolist()
+        #key_idx.update(key_dist)
+    else:
+        a = np.empty((len(pc)))
+        a[:] = np.nan
+        key_dist[('nba_d_' + str(nba_list[0]))]=a
+    df=pd.DataFrame(key_dist)
+    df=pd.concat([p1i, df], axis=1)
+    return df

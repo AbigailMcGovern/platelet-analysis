@@ -11,19 +11,7 @@ from scipy.spatial import cKDTree
 import zarr
 from pathlib import Path
 import os
-from plateletanalysis.variables.transform import revert_to_pixel_coords
-
-
-
-# -------------------
-# Current Mesurements
-# -------------------
-
-def platelet_measurments(df):
-    # add velocity
-    df = finite_difference_derivatives(df)
-    # add neighbour distance
-    df = neighbour_distance(df)
+#from plateletanalysis.variables.transform import revert_to_pixel_coords
 
 
 
@@ -114,106 +102,6 @@ def add_finite_diff_derivative(df, col):
 def fourier_derivatives(df):
     # Fourier transform offers a smoother way of measuring the derivative of time series measurement
     pass
-
-
-
-# ------------------
-# Neighbour Distance
-# ------------------
-
-def neighbour_distance(pc):
-    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours)
-    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1)
-    return t_grp
-
-
-def _nearest_neighbours(pc):
-    nb_count=3
-    key_dist={}
-    key_idx={}
-    #print(len(pc))
-    p1i=pc.reset_index().pid
-    if len(pc)>nb_count:
-        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
-        dmap_sorted=np.sort(dmap, axis=0)
-        dmap_idx_sorted=np.argsort(dmap, axis=0)
-        for i in range(nb_count):
-            nb_dist=(dmap_sorted[i+1,:])
-            nb_idx=dmap_idx_sorted[i+1,:]
-            key_dist['nb_d_' + str(i)]=nb_dist
-            key_idx['nb_i_' + str(i)]=pd.Series(nb_idx).map(p1i).values.astype('int').tolist()
-        key_idx.update(key_dist)
-    else:
-        a = np.empty((len(pc)))
-        a[:] = np.nan
-        key_idx['nb_i_0']=a
-    df=pd.DataFrame(key_idx)
-    df=pd.concat([p1i, df], axis=1)
-    return df
-
-
-def average_neighbour_distance(pc):
-    t_grp=pc.set_index('pid').groupby(['path', 'frame']).apply(_nearest_neighbours_average)
-    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()
-    return pc
-
-
-def _nearest_neighbours_average(pc):
-    nb_count=3
-    nba_list=[5,10,15]
-    key_dist={}
-    key_idx={}
-    #print(len(pc))
-    p1i=pc.reset_index().pid
-    if len(pc)>np.array(nba_list).max():
-        dmap=spatial.distance.squareform(spatial.distance.pdist(pc[['x_s','ys','zs']].values))
-        dmap_sorted=np.sort(dmap, axis=0)
-        #dmap_idx_sorted=np.argsort(dmap, axis=0)
-        for i in nba_list:
-            nb_dist=(dmap_sorted[1:(i+1),:]).mean(axis=0)
-            #nb_idx=dmap_idx_sorted[i+1,:]
-            key_dist['nba_d_' + str(i)]=nb_dist
-            #key_idx['nb_i_' + str(i)]=pd.Series(nb_idx).map(p1i).values.astype('int').tolist()
-        #key_idx.update(key_dist)
-    else:
-        a = np.empty((len(pc)))
-        a[:] = np.nan
-        key_dist[('nba_d_' + str(nba_list[0]))]=a
-    df=pd.DataFrame(key_dist)
-    df=pd.concat([p1i, df], axis=1)
-    return df
-
-
-# ---------
-# Stability
-# ---------
-
-def stability(pc):
-    t_grp = pc.groupby(['path']).apply(do_tstab)
-    pc = pd.concat([pc.set_index('pid'), t_grp.set_index('pid')], axis=1).reset_index()
-    return pc
-
-
-def do_tstab(tgrp):
-    ocp_=[]
-    first=True
-    for i, grp in tgrp.groupby(['frame']):
-        pos=grp[['x_s','ys','zs']].values
-        if first:
-            first=False
-        else:
-            dmap=spatial.distance.cdist(t1, pos)
-            dmap_sorted=np.sort(dmap, axis=1)
-            data=dmap_sorted[:,0]
-            ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid': grp.pid}))
-        t1=pos
-    data=np.zeros(len(pos))
-    data[:]=np.nan
-    ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid':grp.pid}))
-    ocp=pd.concat(ocp_, axis=0).reset_index()
-    ocp['pid']=tgrp.reset_index().pid
-    return ocp
-
 
 
 # -----------
@@ -691,6 +579,38 @@ def smooth_variables(
                     df.loc[idxs, vn] = rolling
             progress.update(1)
     return df
+
+
+
+# ---------
+# Stability
+# ---------
+# found in 1(3)_Load data&analysis.ipynb
+
+def stability(df):
+    df['stab'] = df.groupby(['path']).apply(do_tstab)
+    return df
+
+def do_tstab(tgrp):
+    ocp_ = []
+    first = True
+    #print(len(tgrp))
+    for i, grp in tgrp.groupby(['frame']):
+        pos = grp[['x_s','ys','zs']].values
+        if first:
+            first = False
+        else:
+            dmap = spatial.distance.cdist(t1, pos)
+            dmap_sorted = np.sort(dmap, axis=1)
+            data = dmap_sorted[:,0]
+            ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid': grp.pid}))
+        t1 = pos
+    data = np.zeros(len(pos))
+    data[:] = np.nan
+    ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid':grp.pid})
+    ocp = pd.concat(ocp_, axis=0).reset_index()
+    ocp['pid'] = tgrp.reset_index().pid
+    return ocp
 
 
 

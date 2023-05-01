@@ -36,8 +36,8 @@ def adjust_coordinates(
             px_microns = row[px_microns_col]
         else:
             px_microns = 1
-        adjust_x=row[roi_x_col] * px_microns
-        adjust_y=row[roi_y_col] * px_microns
+        adjust_y=row[roi_x_col] #* px_microns
+        adjust_x=row[roi_y_col] #* px_microns
         xs_1=df.loc[df[path_col]==file, xs_col].copy()
         ys_1=df.loc[df[path_col]==file, ys_col].copy()
         #print(xs_1,xs_1-adjust_x)
@@ -48,6 +48,7 @@ def adjust_coordinates(
     xyz = df[[xs_col, ys_col, zs_col]].to_numpy()
     xyz_rot = rot.apply(xyz)
     df[xs_col], df[ys_col] = xyz_rot[:,0], xyz_rot[:,1]
+    df[ys_col] = - df[ys_col]
     return df # superflous return... just to make more readable when used *upside down smiley*
 
 

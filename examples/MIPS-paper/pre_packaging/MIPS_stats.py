@@ -1,11 +1,21 @@
 import pandas as pd
 import numpy as np
 from scipy import stats
+#from plateletanalysis.variables.basic import size_var, inside_injury_var
 from toolz import curry
 
-# -------------------------------
-# Growth and consolidation phases
-# -------------------------------
+# --------
+# Figure 1
+# --------
+
+
+
+
+# --------
+# Figure 2
+# --------
+
+# want to establish that MIPS is not significantly different at 0 seconds
 
 def compare_two_points(
         df, 
@@ -66,6 +76,7 @@ def compare_two_points(
     results.to_csv(save_path)
     return results
 
+
 def time_from_peak_var(treatments, controls, out, summary_data):
     for i, tx in enumerate(treatments):
         ctl = controls[i]
@@ -76,6 +87,7 @@ def time_from_peak_var(treatments, controls, out, summary_data):
                 vs = g['time (s)'].values - t
                 idxs = g.index.values
                 summary_data.loc[idxs, 'time from peak count (s)'] = vs
+
 
 
 def compare_two_phases(
@@ -106,10 +118,75 @@ def compare_two_phases(
     return results
 
 
+def outlier_test(
+        df, 
+        save_path,
+        ):
+    res = {
+        'path' : [], 
+        'treatment' : [],
+        'platelet count' : [], 
+    }
+    for k, grp in df.groupby(['path', 'treatment']):
+        res['path'].append(k[0])
+        res['treatment'].append(k[1])
+        res['platelet count'].append(grp['platelet count'].mean())
+    res = pd.DataFrame(res)
+    outliers = {
+        'path' : [], 
+        'treatment' : [], 
+        'Q1' : [], 
+        'Q3' : [],
+        'platelet count' : []
+    }
+    for k, grp in res.groupby('treatment'):
+        v = grp['platelet count'].values
+        paths = grp['path'].values
+        Q1 = stats.scoreatpercentile(v, 25)
+        Q3 = stats.scoreatpercentile(v, 75)
+        IQR = Q3 - Q1
+        ll = Q1 - 1.5 * IQR
+        ul = Q3 + 1.5 * IQR
+        l_idx = np.where(v < ll)
+        u_idx = np.where(v > ul)
+        idxs = [l_idx, u_idx]
+        include = []
+        for i, idl in enumerate(idxs):
+            if np.sum(idl) > 0:
+                include.append(1)
+            else:
+                include.append(0)
+        if np.sum(include) == 2:
+            idx = np.concatenate([l_idx[0], u_idx[0]])
+            idx = (idx, )
+        elif np.sum(include) == 1:
+            for i, idl in enumerate(idxs):
+                if np.sum(idl) > 0:
+                    idx = idl
+        else:
+            idx = 0
+        if np.sum(idx) > 0:
+            ol_count = v[idx]
+            ol_path = paths[idx]
+            outliers['path'] = np.concatenate([outliers['path'], ol_path])
+            outliers['platelet count'] = np.concatenate([outliers['platelet count'], ol_count])
+            Q1s = [Q1, ] * len(ol_count)
+            outliers['Q1'] = np.concatenate([outliers['Q1'], Q1s])
+            Q3s = [Q3, ] * len(ol_count)
+            outliers['Q3'] = np.concatenate([outliers['Q3'], Q3s])
+            txs = [k, ] * len(ol_count)
+            outliers['treatment'] = np.concatenate([outliers['treatment'], txs])
+    outliers = pd.DataFrame(outliers)
+    outliers.to_csv(save_path)
 
-# ------------------------------
-# Compare size and inside injury
-# ------------------------------
+
+
+
+# --------
+# Figure 3
+# --------
+
+# 
 
 def compare_two_phases_and_sizes(
         df, 
@@ -203,11 +280,80 @@ def compare_two_phases_size_and_insideout(
     results.to_csv(save_path)
     return results
 
+# -----
+# CMAPS
+# -----
+import seaborn as sns
+import matplotlib.pyplot as plt
+MIPS_order = ['DMSO (MIPS)', 'MIPS']
+cang_order = ['saline','cangrelor']#['Saline','Cangrelor','Bivalirudin']
+SQ_order = ['DMSO (SQ)', 'SQ']
+pal_MIPS  = dict(zip(MIPS_order, sns.color_palette('Blues')[2::3]))
+pal_cang = dict(zip(cang_order, sns.color_palette('Oranges')[2::3]))
+pal_SQ = dict(zip(SQ_order, sns.color_palette('Greens')[2::3]))
+pal1 = {**pal_MIPS,**pal_cang,**pal_SQ}
 
 
-# ---------------
-# Compare regions
-# ---------------
+def insideout_plots(
+        df,
+        treatment='MIPS', 
+        control='DMSO (MIPS)',
+        ):
+    sns.set_context('paper')
+    sns.set_style('ticks')
+    df = pd.concat([df[df['treatment'] == treatment], df[df['treatment'] == control]])
+    df['phase'] = df['time from peak count'].apply(_growth_consol)
+    df['location'] = df['inside injury'].apply(_insideout_str)
+    df['phase x location'] = df['phase'] + ': ' + df['location']
+    res = {
+        'path': [], 
+        'treatment' : [], 
+        'phase x location' : [], 
+        'platelet count' : [], 
+        'platelet density um^-3' : [], 
+    }
+    for k, grp in df.groupby(['path', 'treatment', 'phase x location']):
+        res['path'].append(k[0])
+        res['treatment'].append(k[1])
+        res['phase x location'].append(k[2])
+        res['platelet count'].append(grp['platelet count'].mean())
+        res['platelet density um^-3'].append(grp['platelet density um^-3'].mean())
+    res = pd.DataFrame(res)
+    fig, axs = plt.subplots(1, 2)
+    _ord = ['growth: inside injury', 'growth: outside injury', 'consolidation: inside injury', 'consolidation: outside injury']
+    hue_ord = ['DMSO (MIPS)', 'MIPS']
+    sns.barplot(data=res, x='phase x location', y='platelet count', hue='treatment', palette=pal1,
+                order=_ord, hue_order=hue_ord, ax=axs[0], capsize=.15, linewidth=0.5, errorbar='se')
+    for label in axs[0].get_xticklabels():
+        label.set_rotation(45)
+        label.set_ha('right')
+    sns.barplot(data=res, x='phase x location', y='platelet density um^-3', hue='treatment', palette=pal1, 
+                order=_ord, hue_order=hue_ord, ax=axs[1], capsize=.15, linewidth=0.5, errorbar='se')
+    for label in axs[1].get_xticklabels():
+        label.set_rotation(45)
+        label.set_ha('right')
+    sns.despine()
+    fig.subplots_adjust(right=0.95, left=0.12, bottom=0.5, top=0.95, wspace=0.5, hspace=0.4)
+    fig.set_size_inches(7, 3)
+    plt.show()
+
+
+def _insideout_str(val):
+    if val:
+        return 'inside injury'
+    else:
+        return 'outside injury'
+
+def _growth_consol(val):
+    if val > 0:
+        return 'consolidation'
+    else:
+        return 'growth'
+
+# -------------
+# Figures 4 & 5
+# -------------
+
 
 def compare_phases_sizes_regions(
         out,
@@ -279,78 +425,18 @@ def get_sizes(summary_data, path):
 
 
 
-# -------------
-# Outlier tests
-# -------------
 
-def IQR_outlier_identification(
-        df, 
-        save_path,
-        ):
-    res = {
-        'path' : [], 
-        'treatment' : [],
-        'platelet count' : [], 
-    }
-    for k, grp in df.groupby(['path', 'treatment']):
-        res['path'].append(k[0])
-        res['treatment'].append(k[1])
-        res['platelet count'].append(grp['platelet count'].mean())
-    res = pd.DataFrame(res)
-    outliers = {
-        'path' : [], 
-        'treatment' : [], 
-        'Q1' : [], 
-        'Q3' : [],
-        'platelet count' : []
-    }
-    for k, grp in res.groupby('treatment'):
-        v = grp['platelet count'].values
-        paths = grp['path'].values
-        Q1 = stats.scoreatpercentile(v, 25)
-        Q3 = stats.scoreatpercentile(v, 75)
-        IQR = Q3 - Q1
-        ll = Q1 - 1.5 * IQR
-        ul = Q3 + 1.5 * IQR
-        l_idx = np.where(v < ll)
-        u_idx = np.where(v > ul)
-        idxs = [l_idx, u_idx]
-        include = []
-        for i, idl in enumerate(idxs):
-            if np.sum(idl) > 0:
-                include.append(1)
-            else:
-                include.append(0)
-        if np.sum(include) == 2:
-            idx = np.concatenate([l_idx[0], u_idx[0]])
-            idx = (idx, )
-        elif np.sum(include) == 1:
-            for i, idl in enumerate(idxs):
-                if np.sum(idl) > 0:
-                    idx = idl
-        else:
-            idx = 0
-        if np.sum(idx) > 0:
-            ol_count = v[idx]
-            ol_path = paths[idx]
-            outliers['path'] = np.concatenate([outliers['path'], ol_path])
-            outliers['platelet count'] = np.concatenate([outliers['platelet count'], ol_count])
-            Q1s = [Q1, ] * len(ol_count)
-            outliers['Q1'] = np.concatenate([outliers['Q1'], Q1s])
-            Q3s = [Q3, ] * len(ol_count)
-            outliers['Q3'] = np.concatenate([outliers['Q3'], Q3s])
-            txs = [k, ] * len(ol_count)
-            outliers['treatment'] = np.concatenate([outliers['treatment'], txs])
-    outliers = pd.DataFrame(outliers)
-    outliers.to_csv(save_path)
+# --------
+# Figure 6
+# --------
+
+def correlate_tracknr_w_density_large():
+    pass
 
 
-
-
-# --------------
-# Base functions
-# --------------
-
+# -------
+# Helpers
+# -------
 
 def instantiate_results(other=()):
     results = {
@@ -389,3 +475,90 @@ def add_mann_whitney_u_data(tx, t, tx_data, ctl_data, results, gt=True, other={}
         results[k].append(other[k])
     
 
+
+if __name__ == '__main__':
+    # is the data from today (i.e., filename with today's date)
+    data_today = False
+
+    from datetime import datetime
+    now = datetime.now()
+    date = now.strftime("%y%m%d")
+    today = date
+
+    if not data_today:
+        date = 230421 # input the date on the file you want to use
+
+    # Which stats to do
+    fig2 = False
+    fig3 = False
+    fig4 = False
+
+    outliers = True
+
+    # use data with inside injury variable ("inside injury" : bool) - for Fig 3
+    insideout = False
+    if not insideout:
+        nstr = ''
+    else:
+        nstr = '_insideout'
+
+    # DATA
+    sum_p = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/{date}_count-and-growth-pcnt{nstr}_rolling-counts.csv'
+    summary_data = pd.read_csv(sum_p)
+    out_p = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/{date}_count-and-growth-pcnt{nstr}_centile-data.csv'
+    out = pd.read_csv(out_p)
+    out_g_p = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/{date}_count-and-growth-pcnt{nstr}_centile-data-growth.csv'
+    out_g = pd.read_csv(out_g_p)
+    out_c_p = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/{date}_count-and-growth-pcnt{nstr}_centile-data-consolidation.csv'
+    out_c = pd.read_csv(out_c_p)
+    rd_p = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/regions_data/230422_regionsdata_9var_trk1_seconds_sizes.csv'
+    rdf = pd.read_csv(rd_p)
+    #size = rdf['size'].values
+    #rdf = rdf.drop(columns='size')
+    #rdf['size'] = size
+
+    # Figure 2
+    if fig2:
+        save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_0-vs400_count.csv'
+        save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_0-vs400_density.csv'
+        compare_two_points(summary_data, out, 'platelet count', save_path_0)
+        compare_two_points(summary_data, out, 'density (platelets/um^2)', save_path_1)
+        save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol_count.csv'
+        save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol_density.csv'
+        compare_two_phases(summary_data, out, 'platelet count', save_path_0)
+        compare_two_phases(summary_data, out, 'density (platelets/um^2)', save_path_1)
+
+
+    # Figure 3
+    if fig3:
+        save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol-vs-size_count.csv'
+        save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol-vs-size_density.csv'
+        compare_two_phases_and_sizes(summary_data, out, 'platelet count', save_path_0)
+        compare_two_phases_and_sizes(summary_data, out, 'density (platelets/um^2)', save_path_1)
+    
+    # Figure 3 - insideout
+    if insideout:
+        sp = '/Users/abigailmcgovern/Data/platelet-analysis/MIPS/Figure_3/230429_inside_outside_size_counts_density.csv'
+        df = pd.read_csv(sp)
+        #save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{today}_growth-vs-consol-vs-size-vs-insideout_count.csv'
+        #save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{today}_growth-vs-consol-vs-size-vs-insideout_density.csv'
+        #compare_two_phases_and_insideout(df, 'platelet count', save_path_0)
+        #compare_two_phases_and_insideout(df, 'platelet density um^-3', save_path_1)
+        #insideout_plots(df)
+        save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{today}_growth-vs-consol-vs-SIZE-vs-insideout_count.csv'
+        save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{today}_growth-vs-consol-vs-SIZE-vs-insideout_density.csv'
+        compare_two_phases_size_and_insideout(df, 'platelet count', save_path_0)
+        compare_two_phases_size_and_insideout(df, 'platelet density um^-3', save_path_1)
+
+        
+
+    # Figure 4
+    if fig4:
+        save_path_0 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol-vs-size-vs-region_count.csv'
+        save_path_1 = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_growth-vs-consol-vs-size-vs-region_density.csv'
+        compare_phases_sizes_regions(out, rdf, summary_data, 'platelet count', save_path_0)
+        compare_phases_sizes_regions(out, rdf, summary_data, 'platelet density (um^-3)', save_path_1)
+
+    if outliers:
+        save_path = f'/Users/abigailmcgovern/Data/platelet-analysis/MIPS/statistics/{date}_outliers.csv'
+        outlier_test(summary_data, save_path)
