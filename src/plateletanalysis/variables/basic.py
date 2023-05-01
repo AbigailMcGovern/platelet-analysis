@@ -2,54 +2,57 @@ import numpy as np
 import pandas as pd
 import math as m
 
-from plateletanalysis.variables.measure import quantile_normalise_variables, quantile_normalise_variables_frame
-from .. import config as cfg
-from .transform import spherical_coordinates
+#from plateletanalysis.variables.measure import quantile_normalise_variables, quantile_normalise_variables_frame
+#from .. import config as cfg
+#from .transform import spherical_coordinates
+from tqdm import tqdm
 
 # --------------------------
 # Add Variables to DataFrame
 # --------------------------
 
-def add_basic_variables(df):
-    '''
-    Adds the following variables:
-    - z_led
-    - dist_c
-    - dist_cz
-    - time
-    - minute
-    - injury_zone
-    - height
-    - z_pos
-    - zz
-    - position
-    - inside_injury
-    - tracked
-    - mov_class
-    - movement
-    - exp_id
-    - inh_exp_id
-    - tracknr
-    '''
-    df = led_bins_var(df)
-    df = dist_c_var(df)
-    df = time_var(df)
-    df = minute_var(df)
-    df = injury_zone_var(df)
-    df = height_var(df)
-    df = z_pos_var(df)
-    df = zz_var(df)
-    df = position_var(df)
-    df = inside_injury_var(df)
-    df = tracked_variable(df)
-    df = add_tot_variables(df)
-    df = new_exp_ids(df)
-    df = mov_class_var(df)
-    df = movement_var(df)
-    df = tracknr_variable(df)
+
+def add_basic_variables_to_files(file_paths, stab=True):
+    data = []
+    for p in file_paths:
+            df = pd.read_parquet(p)
+            df['treatment'] = df['path'].apply(get_treatment_name)
+            df.to_parquet(p)
+            if 'nrtracks' not in df.columns.values:
+                df = add_nrtracks(df)
+                df.to_parquet(p)
+            if 'tracknr' not in df.columns.values:
+                df = add_tracknr(df)
+                df.to_parquet(p)
+            if 'time (s)' not in df.columns.values:
+                df = add_time_seconds(df)
+                df.to_parquet(p)
+            if 'terminating' not in df.columns.values:
+                df = add_terminating(df)
+                df.to_parquet(p)
+            if 'sliding (ums^-1)' not in df.columns.values:
+                df = add_sliding_variable(df)
+                df.to_parquet(p)
+            if 'minute' not in df.columns.values:
+                df = time_minutes(df)
+                df.to_parquet(p)
+            if 'total time tracked (s)' not in df.columns.values:
+                df = time_tracked_var(df)
+                df.to_parquet(p)
+            if 'tracking time (s)' not in df.columns.values:
+                df = tracking_time_var(df)
+                df.to_parquet(p)
+            if 'stab' not in df.columns.values and stab:
+                from plateletanalysis.variables.measure import stability
+                df = stability(df)
+            if 'size' not in df.columns.values:
+                df = size_var(df)
+            if 'inside_injury' not in df.columns.values:
+                df = inside_injury_var(df)
+            data.append(df)
+    df = pd.concat(data).reset_index(drop=True)
+    del data
     return df
-
-
 
 # ----------------------------------------
 # Individual Variable Generating Functions
@@ -122,7 +125,7 @@ def time_seconds(df):
 def time_minutes(df):
     if 'time (s)' not in df.columns:
         df['time (s)'] = df['frame'] / 0.321764322705706
-    df.loc[:,'minute'] = pd.cut(df['time'], 10, labels=np.arange(1,11,1))
+    df.loc[:,'minute'] = pd.cut(df['time (s)'], 10, labels=np.arange(1,11,1))
     return df
 
 
@@ -319,8 +322,8 @@ def get_treatment_name(inh): # need to rename from last run
     elif 'cang' in inh:
         out = 'cangrelor'
     elif 'veh-mips' in inh:
-        out = 'MIPS vehicle'
-    elif 'mips' in inh or 'MIPS' in inh:
+        out = 'DMSO (MIPS)'
+    elif 'mips' in inh or 'MIPS' in inh or 'Injury 2-4 (MIPS effect)' in inh:
         out = 'MIPS'
     elif 'sq' in inh:
         out = 'SQ'
@@ -334,7 +337,7 @@ def get_treatment_name(inh): # need to rename from last run
         out = 'DMSO (salgav)'
     elif 'Salgav' in inh or 'gavsal' in inh:
         out = 'salgav'
-    elif 'DMSO' in inh:
+    elif 'DMSO' in inh or 'DMSO 20ul' in inh:
         out = 'DMSO (MIPS)'
     elif 'dmso' in inh:
         out = 'DMSO (SQ)'
@@ -343,3 +346,173 @@ def get_treatment_name(inh): # need to rename from last run
     else:
         out = inh
     return out
+
+
+def fsec_var(df, n_hues = 10): #if you use 10, 60s each (10 intervals)
+    '''bin into intervals dep on when pl was first detected'''
+    if 'fframe' not in df.columns:
+        df = fframe_var(df)
+    
+    edges = np.arange(0,205,10)#np.arange(0,196,3)
+    labels = list(np.linspace(0,570,20).astype('int'))#np.round(np.arange(0,600,9.3),0).astype('int')
+
+    df.loc[:,'fsec'] = pd.cut(df['fframe'], edges, labels= labels, include_lowest= True)
+    return df
+
+
+def fframe_var(df):
+    '''first frame'''
+    first_frame = df.sort_values(by = ['path','particle','tracknr']).groupby(['path','particle'])['frame'].nth(0).rename('fframe')
+    df = df.merge(first_frame, on = ['path','particle'])
+    return df
+
+
+def add_region_category(df):
+    rcyl = (df.x_s ** 2 + df.ys ** 2) ** 0.5
+    df['rcyl'] = rcyl
+    df['region'] = [None, ] * len(df)
+    # center
+    sdf = df[df['rcyl'] <= 37.5]
+    idxs = sdf.index.values
+    df.loc[idxs, 'region'] = 'center'
+    # outer regions
+    # 45 degrees = 0.785398
+    sdf = df[df['rcyl'] > 37.5]
+    # anterior
+    rdf = sdf[sdf['phi'] > 0.785398]
+    idxs = rdf.index.values
+    df.loc[idxs, 'region'] = 'anterior'
+    # lateral
+    rdf = sdf[(sdf['phi'] < 0.785398) & (sdf['phi'] > -0.785398)]
+    idxs = rdf.index.values
+    df.loc[idxs, 'region'] = 'lateral'
+    # posterior
+    rdf = sdf[sdf['phi'] < -0.785398]
+    idxs = rdf.index.values
+    df.loc[idxs, 'region'] = 'posterior'
+    return df
+
+
+
+def add_nrtracks(df):
+    for k, g in df.groupby(['path', 'particle', ]):
+        n = len(g)
+        idxs = g.index.values
+        df.loc[idxs, 'nrtracks'] = n
+    return df
+
+
+def add_tracknr(df):
+    df = df.sort_values('frame')
+    for k, g in df.groupby(['path', 'particle', ]):
+        track_nr = range(1, len(g) + 1)
+        idxs = g.index.values
+        df.loc[idxs, 'tracknr'] = track_nr
+    return df
+
+
+def add_phase(df, phases={'growth' : (0, 260), 'consolidation' : (260, 600)}):
+    df['phase'] = [None, ] * len(df)
+    for phase in phases:
+        sdf = df[(df['time (s)'] > phases[phase][0]) & (df['time (s)'] > phases[phase][1])]
+        idxs = sdf.index.values
+        df.loc[idxs, 'phase'] = phase
+    return df
+
+
+
+def add_time_seconds(df, frame_col='frame'):
+    df['time (s)'] = df[frame_col] / 0.321764322705706
+    return df
+
+
+def add_sliding_variable(df):
+    df['sliding (ums^-1)'] = [None, ] * len(df)
+    # not moving in direction of blood flow
+    sdf = df[df['dvy'] >= 0]
+    idxs = sdf.index.values
+    df.loc[idxs, 'sliding (ums^-1)'] = 0
+    # moving in the direction of blood floe
+    sdf = df[df['dvy'] < 0]
+    idxs = sdf.index.values
+    new = np.abs(sdf['dvy'].values)
+    df.loc[idxs, 'sliding (ums^-1)'] = new
+    return df
+
+
+def tracking_time_var(df):
+    df['tracking time (s)'] = df['tracknr'] / 0.321764322705706
+    return df
+
+
+def time_tracked_var(df):
+    df['total time tracked (s)'] = df['nrtracks'] / 0.321764322705706
+    return df
+
+
+def add_terminating(df):
+    df['terminating'] = [False, ] * len(df)
+    for k, g in df.groupby(['path', ]):
+        t_max = g['frame'].max()
+        sdf = g[g['frame'] != t_max]
+        term = sdf['nrtracks'] == sdf['tracknr']
+        idxs = sdf.index.values
+        df.loc[idxs, 'terminating'] = term
+    return df
+
+
+def add_normalised_ca_pcnt(df):
+    for k, g in df.groupby(['path', 'frame']):
+        ca_max = g['ca_corr'].max()
+        ca_norm = g['ca_corr'] / ca_max * 100
+        idxs = g.index.values
+        df.loc[idxs, 'Ca2+ pcnt max'] = ca_norm
+    return df
+
+
+def add_shedding(df):
+    df['shedding'] = [False, ] * len(df)
+    nits = 0
+    for k, g in df.groupby(['path', 'particle']):
+        nits += 1
+    with tqdm(total=nits) as progress:
+        for k, g in df.groupby(['path', 'particle']):
+            #shed = df['terminating'].sum() # was going to take 11 hours
+            if True in df['terminating'].values:
+                idxs = g.index.values
+                df.loc[idxs, 'shedding'] = True
+            progress.update(1)
+    return df
+
+
+def size_var(df):
+    '''Was this from a thrombus that is from the largest 50th centile or the smallest?'''
+    df_size = df.groupby(['treatment', 'path']).size(#df[df.nrtracks>1].groupby(['inh','path']).size(
+        ).groupby(level=0).transform(lambda x: pd.qcut(x,2,labels=['small','large'])).rename('size').reset_index()
+    df = df.merge(df_size, on = ['treatment', 'path'])
+    size = df['size'].values
+    df = df.drop(columns='size')
+    df['size'] = size
+    return df 
+
+
+def hsec_var(df):
+    '''which 100 seconds?'''
+    t = np.arange(0,700,100)
+    t_i = [str(t1)+'-'+ str(t2) for t1,t2 in zip(t[:-1],t[1:])]
+    df.loc[:,'hsec'] = pd.cut(df['time (s)'], t, labels=t_i, include_lowest= True)
+    
+    return df
+
+
+def inside_injury_var(df): 
+    df=dist_c_var(df)
+    df['inside_injury'] = df.dist_c < 37.5
+    return df
+
+    
+def dist_c_var(df):# Creates variables dist_c & dist_cz that give distance from center
+    df['dist_c']=((df.loc[:,'x_s'])**2+(df.loc[:,'ys'])**2)**0.5
+    df['dist_cz']=((df.loc[:,'x_s'])**2+(df.loc[:,'ys'])**2+(df.loc[:,'zs'])**2)**0.5
+    return df
+

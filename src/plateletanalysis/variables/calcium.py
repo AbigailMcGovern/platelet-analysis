@@ -1,7 +1,7 @@
 from scipy.signal import find_peaks
 import numpy as np
 import pandas as pd
-from .. import config as cfg
+#from ....old_modules import config as cfg
 
 # Global parameters for calcium analysis
 #----------------------------------------------------------------------
@@ -16,13 +16,12 @@ calc_var='ca_corr'
 def corrected_calcium(df):
     z=df.zs
     c=df.c0_mean
-    try:
-        d_max=pd.read_csv(cfg.df_paths.path[1]).to_dict('records')[0]
-        d_min=pd.read_csv(cfg.df_paths.path[2]).to_dict('records')[0]
-    except:
-        d_max={'a':814.697988,'b':-22.386315,'c':0.196006}
-        d_min={'a':159.465109,'b':-1.330306,'c':0.011518}
-        
+    #try:
+    #    d_max=pd.read_csv(cfg.df_paths.path[1]).to_dict('records')[0]
+    #    d_min=pd.read_csv(cfg.df_paths.path[2]).to_dict('records')[0]
+    #except:
+    d_max={'a':814.697988,'b':-22.386315,'c':0.196006}
+    d_min={'a':159.465109,'b':-1.330306,'c':0.011518}
     print(d_max,d_min)    
     c_high=d_max['a']+d_max['b']*z+d_max['c']*(z**2)
     c_low=d_min['a']+d_min['b']*z+d_min['c']*(z**2)
