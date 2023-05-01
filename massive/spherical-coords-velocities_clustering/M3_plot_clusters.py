@@ -1,4 +1,4 @@
-from plateletanalysis.visualise.scatter import multi_basic_scatter_save
+from old_modules.scatter import multi_basic_scatter_save
 from plateletanalysis.analysis.clustering import plot_clusters
 import pandas as pd
 import os
