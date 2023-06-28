@@ -9,6 +9,7 @@ import seaborn as sns
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from plateletanalysis.variables.measure import quantile_normalise_variables, quantile_normalise_variables_frame
+from plateletanalysis.variables.transform import spherical_coordinates
 
 
 
@@ -133,14 +134,16 @@ def persistent_homology_for_sims(df, save_path, cutoffs=(1, 1, 10), bootstrap=Fa
         'sample_ID' : [],
         'mean' : [], 
         'std' : [], 
-        'persistence' : [],
-        'donutness' : [], 
+        'persistence_1' : [],
+        'outlierness_1' : [], 
         'Q1' : [], 
         'Q2' : [], 
         'Q3' : [], 
         'Q4' : [], 
-        'second_persistence' : [], 
-        'second_donutness' : [], 
+        'persistence_2' : [], 
+        'outlierness_2' : [], 
+        'persistence_diff' : [], 
+        'donutness' : []
     }
     if bootstrap:
         out['subsample_number'] = []
@@ -168,30 +171,46 @@ def persistent_homology_for_sims(df, save_path, cutoffs=(1, 1, 10), bootstrap=Fa
 
 
 
-def persistent_homology_for_exp(df, save_path, cutoffs=(1, 1, 10), bootstrap=False, subsample=300, n_subsamples=30, x_col='x_s', y_col='ys'):
+def persistent_homology_for_exp(
+        df, 
+        save_path, 
+        cutoffs=(1, 1, 10), 
+        bootstrap=True, 
+        subsample=200, 
+        n_subsamples=100, 
+        x_col='x_s', 
+        y_col='ys'
+        ):
+    if 'nb_density_15_pcntf' not in df.columns.values:
+        from plateletanalysis.variables.measure import quantile_normalise_variables_frame
+        df = quantile_normalise_variables_frame(df, vars=['nb_density_15', ])
+        df = df[df['nb_density_15_pcntf'] > 50]
     out = {
         'path' : [],
-        'frame' : [],
+        'treatment' : [],
+        'time (s)' : [],
         'mean' : [], 
         'std' : [], 
-        'persistence' : [],
-        'donutness' : [], 
+        'persistence_1' : [],
+        'outlierness_1' : [], 
         'Q1' : [], 
         'Q2' : [], 
         'Q3' : [], 
         'Q4' : [], 
-        'second_persistence' : [], 
-        'second_donutness' : [], 
+        'persistence_2' : [], 
+        'outlierness_2' : [], 
+        'persistence_diff' : [], 
+        'donutness' : []
     }
     if bootstrap:
         out['subsample_number'] = []
     for i in range(cutoffs[0], cutoffs[1], cutoffs[2]):
         out[f'number_over_{i}'] = []
     its = 0
-    for k, grp in df.groupby(['path', 'frame']):
+    for k, grp in df.groupby(['path', 'time (s)']):
         its += 1
     with tqdm(total=its) as progress:
-        for k, grp in df.groupby(['path', 'frame']):
+        for k, grp in df.groupby(['path', 'treatment', 'time (s)']):
             X = grp[[x_col, y_col]].values
             if not bootstrap:
                 out = get_donut_data(X, k, out, cutoffs)
@@ -217,7 +236,7 @@ def get_donut_data(points, k, out, cutoffs, i=None):
         max_loop = diff[i]
         mean = np.mean(diff)
         std = np.std(diff)
-        donutness = (max_loop - mean) / std
+        outlierness = (max_loop - mean) / std
         q1 = scoreatpercentile(diff, 25)
         q2 = scoreatpercentile(diff, 50)
         q3 = scoreatpercentile(diff, 75)
@@ -227,17 +246,17 @@ def get_donut_data(points, k, out, cutoffs, i=None):
         max_loop = np.NaN
         mean = np.NaN
         std = np.NaN
-        donutness = np.NaN
+        outlierness = np.NaN
         q1 = np.NaN
         q2 = np.NaN
         q3 = np.NaN
         q4 = np.NaN
     if len(diff) > 1:
         mns2_persistence = diff[idxs[-2]]
-        mns2_donutness = (mns2_persistence - mean) / std
+        mns2_outlierness = (mns2_persistence - mean) / std
     else:
         mns2_persistence = np.NaN
-        mns2_donutness = np.NaN
+        mns2_outlierness = np.NaN
     keys = list(out.keys())
     if 'distribution' in keys:
         out['distribution'].append(k[0])
@@ -246,17 +265,20 @@ def get_donut_data(points, k, out, cutoffs, i=None):
         out['sample_ID'].append(k[3])
     elif 'path' in keys:
         out['path'].append(k[0])
-        out['frame'].append(k[1])
+        out['treatment'].append(k[1])
+        out['time (s)'].append(k[2])
     out['mean'].append(mean)
     out['std'].append(std)
-    out['donutness'].append(donutness)
-    out['persistence'].append(max_loop)
+    out['outlierness_1'].append(outlierness)
+    out['persistence_1'].append(max_loop)
     out['Q1'].append(q1)
     out['Q2'].append(q2)
     out['Q3'].append(q3)
     out['Q4'].append(q4)
-    out['second_donutness'].append(mns2_donutness)
-    out['second_persistence'].append(mns2_persistence)
+    out['outlierness_2'].append(mns2_outlierness)
+    out['persistence_2'].append(mns2_persistence)
+    out['persistence_diff'].append(max_loop - mns2_persistence)
+    out['donutness'].append(outlierness - mns2_outlierness)
     for i in range(cutoffs[0], cutoffs[1], cutoffs[2]):
         upper  = mean + (std * i)
         idxs = np.where(diff > upper)[0]
@@ -506,22 +528,31 @@ if __name__ == '__main__':
     #plot_experiment(out, x='frame', y='donutness', y_vars=('donutness_1', 'donutness'))
 
     # ALSO CANG - small clots therfore limit sample size
-    cang_n = '211206_cang_df.parquet'
-    cang_p = os.path.join(df_dir, cang_n)
-    #cang_exp = '191113_IVMTR26_Inj4_cang_exp3'
-    cang_exp = '191101_IVMTR19_Inj4_cang_exp3'
-    df = pd.read_parquet(cang_p)
-    paths = pd.unique(df['path'])
-    df = df[df['path'] == cang_exp]
-    df = scale_x_and_y(df, x_col='x_s', y_col='ys')
-    df = df[df['nb_density_15_pcntf'] > 50]
-    plot_frames(df, 'x_s_scaled', 'ys_scaled', (10, 30, 50, 100), cang_exp)
-    cang_save = '/Users/amcg0011/Data/platelet-analysis/TDA/simulations/single-cang-example-1_scaledxy_dt50_ss200_ns100.csv'
-    out = persistent_homology_for_exp(df, cang_save, cutoffs=(1, 1, 10), bootstrap=True, subsample=200, n_subsamples=100, x_col='x_s_scaled', y_col='ys_scaled')
-    plot_experiment(out, x='frame', y='donutness', y_vars=('donutness', 'second_donutness'))
-    #out = pd.read_csv(cang_save)
-    out['donutness_1'] = out['donutness'] - out['second_donutness']
-    plot_experiment(out, x='frame', y='donutness', y_vars=('donutness_1', 'donutness'))
+    #cang_n = '211206_cang_df.parquet'
+    #cang_p = os.path.join(df_dir, cang_n)
+    ##cang_exp = '191113_IVMTR26_Inj4_cang_exp3'
+    #cang_exp = '191101_IVMTR19_Inj4_cang_exp3'
+    #df = pd.read_parquet(cang_p)
+    #paths = pd.unique(df['path'])
+    #df = df[df['path'] == cang_exp]
+    #df = scale_x_and_y(df, x_col='x_s', y_col='ys')
+    #df = df[df['nb_density_15_pcntf'] > 50]
+    #plot_frames(df, 'x_s_scaled', 'ys_scaled', (10, 30, 50, 100), cang_exp)
+    #cang_save = '/Users/amcg0011/Data/platelet-analysis/TDA/simulations/single-cang-example-1_scaledxy_dt50_ss200_ns100.csv'
+    #out = persistent_homology_for_exp(df, cang_save, cutoffs=(1, 1, 10), bootstrap=True, subsample=200, n_subsamples=100, x_col='x_s_scaled', y_col='ys_scaled')
+    #plot_experiment(out, x='frame', y='donutness', y_vars=('donutness', 'second_donutness'))
+    ##out = pd.read_csv(cang_save)
+    #out['donutness_1'] = out['donutness'] - out['second_donutness']
+    #plot_experiment(out, x='frame', y='donutness', y_vars=('donutness_1', 'donutness')
+
+    d = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes'
+    file_names = ('211206_saline_df_220827_amp0.parquet', '211206_veh-sq_df.parquet')
+    file_paths = [os.path.join(d, n) for n in file_names]
+    from plateletanalysis import add_basic_variables_to_files
+    df = add_basic_variables_to_files(file_paths)
+    save_path = '/Users/abigailmcgovern/Data/platelet-analysis/TDA/2305_donutness/230516_saline_DMSO-SQ_donutness.csv'
+    persistent_homology_for_exp(df, save_path)
+
 
 
     # ALSO BIVA & maybe DMS0

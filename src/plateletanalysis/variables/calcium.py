@@ -12,23 +12,31 @@ calc_var='ca_corr'
 
 # New calcium variables
 #----------------------------------------------------------------------
-
-def corrected_calcium(df):
-    z=df.zs
-    c=df.c0_mean
-    #try:
-    #    d_max=pd.read_csv(cfg.df_paths.path[1]).to_dict('records')[0]
-    #    d_min=pd.read_csv(cfg.df_paths.path[2]).to_dict('records')[0]
-    #except:
-    d_max={'a':814.697988,'b':-22.386315,'c':0.196006}
-    d_min={'a':159.465109,'b':-1.330306,'c':0.011518}
-    print(d_max,d_min)    
-    c_high=d_max['a']+d_max['b']*z+d_max['c']*(z**2)
-    c_low=d_min['a']+d_min['b']*z+d_min['c']*(z**2)
-    c_corr=100*(c-c_low)/(c_high-c_low)
-    c_corr=c_corr.clip(0)
-    df['c_corr'] = c_corr
+def corrected_calcium(df, by_tx=False):
+    if not by_tx:
+        df['ca_corr'] = calc_comp(df)
+    else:
+        for k, grp in df.groupby('treatment'):
+            idxs = grp.index.values
+            vals = calc_comp(grp)
+            df.loc[idxs, 'ca_corr'] = vals
     return df
+
+
+def calc_comp(df):
+    z  = df.zs
+    c = df.c0_mean
+    #try:
+     #   d_max = pd.read_csv('df_reg zz 98.csv').to_dict('records')[0]#'Calcium comp\\df_reg zz max_calc.csv'
+      #  d_min = pd.read_csv('df_reg zz 1.csv').to_dict('records')[0]#'Calcium comp\\df_reg zz min_calc.csv'
+    #except:
+    d_max = {'a':814.697988,'b':-22.386315,'c':0.196006}
+    d_min = {'a':159.465109,'b':-1.330306,'c':0.011518}  
+    c_high = d_max['a'] + d_max['b'] * z + d_max['c'] * (z**2)
+    c_low = d_min['a'] + d_min['b'] * z + d_min['c'] * (z**2)
+    c_corr = 100 * (c - c_low) / (c_high - c_low)
+    c_corr = c_corr.clip(0)
+    return c_corr
 
 # Functions for analysis of calcium in individual platelets
 #----------------------------------------------------------------------
