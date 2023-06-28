@@ -350,12 +350,18 @@ def regions_abs_and_pcnt_timeplots(
             for i in range(len(variables)):
                 if different_treatements:
                     sdf = data[i][data[i]['region'] == r]
+                t_max = sdf[time_col].max()
+                sdf = sdf[sdf[time_col] < t_max - 4]
                 ax = axs[j, i]
                 ax.set_title(r)
                 sns.despine(ax=ax)
                 #if log[i]:
                  #   ax.set_yscale('log')
-                sns.lineplot(data=sdf, x=time_col, y=variables[i], hue=hue, ax=ax, errorbar=("se", 1), err_style=es, marker=m)
+                if time_col == 'time (s)':
+                    _add_rolled(variables[i], sdf)
+                sns.lineplot(data=sdf, x=time_col, y=variables[i], hue=hue, 
+                             ax=ax, errorbar=("se", 1), err_style=es, marker=m, 
+                             palette=pal1)
                 if 'pcnt' in variables[i]:
                     ax.set_ylabel('percent vehicle (%)')
                     ax.axline((0, 100), (1, 100), color='grey', alpha=0.5)

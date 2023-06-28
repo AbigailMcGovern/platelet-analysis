@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import math as m
+from toolz import curry
 
 #from plateletanalysis.variables.measure import quantile_normalise_variables, quantile_normalise_variables_frame
 #from .. import config as cfg
@@ -12,44 +13,65 @@ from tqdm import tqdm
 # --------------------------
 
 
-def add_basic_variables_to_files(file_paths, stab=True):
+def add_basic_variables_to_files(file_paths, stab=True, density=False, nba=False, cont=False):
     data = []
     for p in file_paths:
-            df = pd.read_parquet(p)
-            df['treatment'] = df['path'].apply(get_treatment_name)
+        df = pd.read_parquet(p)
+        df['treatment'] = df['path'].apply(get_treatment_name)
+        df.to_parquet(p)
+        if 'nrtracks' not in df.columns.values:
+            df = add_nrtracks(df)
             df.to_parquet(p)
-            if 'nrtracks' not in df.columns.values:
-                df = add_nrtracks(df)
-                df.to_parquet(p)
-            if 'tracknr' not in df.columns.values:
-                df = add_tracknr(df)
-                df.to_parquet(p)
-            if 'time (s)' not in df.columns.values:
-                df = add_time_seconds(df)
-                df.to_parquet(p)
-            if 'terminating' not in df.columns.values:
-                df = add_terminating(df)
-                df.to_parquet(p)
-            if 'sliding (ums^-1)' not in df.columns.values:
-                df = add_sliding_variable(df)
-                df.to_parquet(p)
-            if 'minute' not in df.columns.values:
-                df = time_minutes(df)
-                df.to_parquet(p)
-            if 'total time tracked (s)' not in df.columns.values:
-                df = time_tracked_var(df)
-                df.to_parquet(p)
-            if 'tracking time (s)' not in df.columns.values:
-                df = tracking_time_var(df)
-                df.to_parquet(p)
-            if 'stab' not in df.columns.values and stab:
-                from plateletanalysis.variables.measure import stability
-                df = stability(df)
-            if 'size' not in df.columns.values:
-                df = size_var(df)
-            if 'inside_injury' not in df.columns.values:
-                df = inside_injury_var(df)
-            data.append(df)
+        if 'tracknr' not in df.columns.values:
+            df = add_tracknr(df)
+            df.to_parquet(p)
+        if 'time (s)' not in df.columns.values:
+            df = add_time_seconds(df)
+            df.to_parquet(p)
+        if 'terminating' not in df.columns.values:
+            df = add_terminating(df)
+            df.to_parquet(p)
+        if 'sliding (ums^-1)' not in df.columns.values:
+            df = add_sliding_variable(df)
+            df.to_parquet(p)
+        if 'minute' not in df.columns.values:
+            df = time_minutes(df)
+            df.to_parquet(p)
+        if 'total time tracked (s)' not in df.columns.values:
+            df = time_tracked_var(df)
+            df.to_parquet(p)
+        if 'tracking time (s)' not in df.columns.values:
+            df = tracking_time_var(df)
+            df.to_parquet(p)
+        if 'stab' not in df.columns.values and stab:
+            from plateletanalysis.variables.measure import stability
+            df = stability(df)
+            df.to_parquet(p)
+        if 'size' not in df.columns.values:
+            df = size_var(df)
+            df.to_parquet(p)
+        if 'inside_injury' not in df.columns.values:
+            df = inside_injury_var(df)
+            df.to_parquet(p)
+        if 'nba_5' not in df.columns.values and nba:
+            from plateletanalysis.variables.neighbours import average_neighbour_distance
+            df = average_neighbour_distance(df) # check
+            df.to_parquet(p)
+        if 'nb_density_15' not in df.columns.values and density:
+            from plateletanalysis.variables.neighbours import add_neighbour_lists, local_density
+            if 'nb_particle_15' not in df.columns.values:
+                df = add_neighbour_lists(df)
+            df = local_density(df)
+            df.to_parquet(p)
+        if 'cont' not in df.columns.values and cont:
+            from plateletanalysis import contraction
+            df = contraction(df)
+            df.to_parquet(p)
+        if 'phi' not in df.columns.values:
+            from plateletanalysis.variables.transform import spherical_coordinates
+            df = spherical_coordinates(df)
+            df.to_parquet(p)
+        data.append(df)
     df = pd.concat(data).reset_index(drop=True)
     del data
     return df
@@ -427,16 +449,18 @@ def add_time_seconds(df, frame_col='frame'):
 
 
 def add_sliding_variable(df):
-    df['sliding (ums^-1)'] = [None, ] * len(df)
+    #df['sliding (ums^-1)'] = [None, ] * len(df)
     # not moving in direction of blood flow
     sdf = df[df['dvy'] >= 0]
     idxs = sdf.index.values
     df.loc[idxs, 'sliding (ums^-1)'] = 0
-    # moving in the direction of blood floe
+    # moving in the direction of blood flow
     sdf = df[df['dvy'] < 0]
-    idxs = sdf.index.values
-    new = np.abs(sdf['dvy'].values)
-    df.loc[idxs, 'sliding (ums^-1)'] = new
+    new = np.where(df['dvy'].values < 0, np.abs(df['dvy'].values), 0)
+    df['sliding (ums^-1)'] = new
+    #idxs = sdf.index.values
+    #new = np.abs(sdf['dvy'].values)
+    #df.loc[idxs, 'sliding (ums^-1)'] = new
     return df
 
 
@@ -516,3 +540,65 @@ def dist_c_var(df):# Creates variables dist_c & dist_cz that give distance from 
     df['dist_cz']=((df.loc[:,'x_s'])**2+(df.loc[:,'ys'])**2+(df.loc[:,'zs'])**2)**0.5
     return df
 
+
+def quadrant_var(df):
+    df['quadrant']='lateral'
+    df.loc[(df['ys']>df['x_s'])&(df['ys']>-df['x_s']),'quadrant']='anterior'
+    df.loc[(df['ys']<df['x_s'])&(df['ys']<-df['x_s']),'quadrant']='posterior'
+    return df
+
+
+def rename_channel_vars(df):
+    rename = {
+        'Alxa 647: mean_intensity' : 'c2_mean', 
+        'Alxa 647: max_intensity' : 'c2_max', 
+        'GaAsP Alexa 488: mean_intensity' : 'c0_mean',
+       'GaAsP Alexa 488: max_intensity' : 'c0_max',
+       'GaAsP Alexa 568: mean_intensity' : 'c1_mean',
+       'GaAsP Alexa 568: max_intensity': 'c1_max'
+    }
+    df = df.rename(columns=rename)
+    return df
+
+
+def tri_phase_var(df):
+    if 'time (s)' not in df.columns.values:
+        df = time_seconds(df)
+    u_bins = [100, 300, 600]
+    l_bins = [0, 100, 300]
+    out_type = 'string'
+    bin_func = _value_bin(u_bins, l_bins, out_type)  
+    df['tri_fsec'] = df['time (s)'].apply(bin_func)  
+    return df
+
+
+
+def bin_by_var_linear(df, var, ub, lb, n_bins, bin_name, out_type='string'):
+    u_bins = np.linspace(lb, ub, n_bins)[:-1]
+    l_bins = np.linspace(lb, ub, n_bins)[1:]
+    bin_func = _value_bin(u_bins, l_bins, out_type)  
+    vals = df[var].apply(bin_func)  
+    df[bin_name] = vals
+
+
+@curry
+def _value_bin(u_bins, l_bins, out_type, val):
+    for lb, ub in zip(u_bins, l_bins):
+        if val >= lb and val < ub:
+            if out_type == 'mean':
+                b = (lb + ub) / 2
+            elif out_type == 'string':
+                b = f'{lb}-{ub}'
+            return b
+        
+
+def isoA_var(df, nA_in_injury=10):
+    if 'dist_c' not in df.columns:
+        df = dist_c_var(df)
+    inj_zone_A = np.pi * (37.5 ** 2) / 2
+    A_step = inj_zone_A/nA_in_injury #CHANGED FROM 3
+    A_ = np.arange(0,A_step*(nA_in_injury*10+1),A_step)
+    radii = ((2*A_/(np.pi)))**(1/2)
+    radii[-1] = 250
+    df['iso_A'] = pd.cut(df['dist_c'],radii,labels=radii[1:]).astype('float64').round(1)
+    return df

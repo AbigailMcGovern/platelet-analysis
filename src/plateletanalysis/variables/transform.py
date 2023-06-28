@@ -216,9 +216,9 @@ def cylindrical_coordinates(df):
     differences in thickness in different parts of the clot.
     '''
     radial = (df['x_s'].values ** 2 + df['ys'].values ** 2 ) ** 0.5
-    df['xyr'] = zip(list(df['x_s'].values), list(df['ys'].values), list(radial))
+    df['xyr'] = list(zip(list(df['x_s'].values), list(df['ys'].values), list(radial)))
     azimuthal = df['xyr'].apply(_calculate_cylindrical_azimuthal)
-    df = df.drop('xyz', axis=1) 
+    df = df.drop('xyr', axis=1) 
     df['cyl_radial'] = radial
     df['cyl_azimuthal'] = azimuthal
     return df
@@ -226,12 +226,7 @@ def cylindrical_coordinates(df):
 
 def _calculate_cylindrical_azimuthal(xyr):
     # visualise and adjust to suit needs
+    '''In degrees not radians'''
     x, y, r = xyr
-    if x == 0 and y == 0:
-        phi = np.NaN
-    elif x >= 0:
-        phi = np.arcsin(y / r)
-    elif x < 0 and y >= 0:
-        phi = - np.arcsin(y / r) + np.pi
-    elif x < 0 and y < 0:
-        phi = - np.arcsin(y / r) + np.pi
+    phi = np.arctan(y/np.abs(x)) * 180 / np.pi
+    return phi

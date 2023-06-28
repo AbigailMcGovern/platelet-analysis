@@ -278,6 +278,27 @@ def get_sizes(summary_data, path):
     return summary_data[summary_data['path'] == path]['thrombus size'].values[0] 
 
 
+def phase_region_multivar(
+        df, 
+        save_path,
+        variables,
+        treatments=('MIPS', 'SQ', 'cangrelor'), 
+        controls=('DMSO (MIPS)', 'DMSO (SQ)', 'saline') ,
+        regions=('center', 'anterior', 'lateral', 'posterior'), 
+        region_var='region', 
+        phase_var='phase',
+        phases=('growth', 'consolidation')
+        ):
+    other = variables + ('region', )
+    results = instantiate_results(other=other)
+    for i, tx in enumerate(treatments):
+        ctl = controls[i]
+        for k, grp in df.groupby(['phase', 'region'] ):
+            for v in variables:
+                pass
+
+
+
 
 # -------------
 # Outlier tests

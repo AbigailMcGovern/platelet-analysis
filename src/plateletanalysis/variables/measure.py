@@ -588,15 +588,20 @@ def smooth_variables(
 # found in 1(3)_Load data&analysis.ipynb
 
 def stability(df):
-    df['stab'] = df.groupby(['path']).apply(do_tstab)
+    t_grp = df.groupby('path').apply(do_tstab)
+    stab_grp = t_grp.reset_index()[['stab', 'pid']]
+    stab_grp = stab_grp.set_index('pid').sort_index()
+    df = df.merge(stab_grp, on = ['pid'])
+    df = df.loc[:,~df.columns.duplicated()].copy()
     return df
+
 
 def do_tstab(tgrp):
     ocp_ = []
     first = True
     #print(len(tgrp))
     for i, grp in tgrp.groupby(['frame']):
-        pos = grp[['x_s','ys','zs']].values
+        pos  =grp[['x_s','ys','zs']].values
         if first:
             first = False
         else:
@@ -607,10 +612,25 @@ def do_tstab(tgrp):
         t1 = pos
     data = np.zeros(len(pos))
     data[:] = np.nan
-    ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid':grp.pid})
+    ocp_.append(pd.DataFrame({'stab' : data}))#, 'pid':grp.pid}))
     ocp = pd.concat(ocp_, axis=0).reset_index()
     ocp['pid'] = tgrp.reset_index().pid
     return ocp
 
 
+# --------------------
+# Contractile movement
+# --------------------
 
+
+def contraction(df):
+    cont_grp = df.groupby(['path']).apply(contract)
+    cont_grp = cont_grp.set_index('pid').sort_index()
+    df = df.merge(cont_grp, on = ['pid'])
+    return df
+
+
+def contract(t2):
+    t2['cont'] = ((-t2['x_s'])*t2['dvx'] + (-t2['ys'])*t2['dvy'] + (-t2['zf'])*t2['dvz'] )/((t2['x_s'])**2 + (t2['ys'])**2 + (t2['zf'])**2)**0.5
+    t2['cont_p'] = t2.cont/t2.dv
+    return pd.DataFrame({'cont' : (t2['cont']), 'cont_p' : (t2['cont_p']), 'pid':t2['pid']})
