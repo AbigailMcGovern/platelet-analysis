@@ -1,4 +1,4 @@
-from plateletanalysis.analysis.summary_data import regions_heatmap_data
+from plateletanalysis.analysis.mips_analysis import regions_heatmap_data
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
