@@ -15,33 +15,34 @@ from scipy import spatial
 # Feat. cKD tree
 
 
-def add_neighbour_lists(df, max_dist=15):
+def add_neighbour_lists(df, max_dist=15, sample_col='path', coords=('x_s', 'ys', 'zs')):
+    coords = list(coords)
     nb_df = {
         f'nb_particles_{max_dist}' : np.array([None, ] * len(df)).astype(np.float64), 
         f'nb_disp_{max_dist}' : np.array([np.nan, ] * len(df)).astype(np.float64), 
         f'pid' : df['pid'].values
     }
     nb_df = pd.DataFrame(nb_df).set_index('pid')
-    files = pd.unique(df['path'])
+    files = pd.unique(df[sample_col])
     frames = pd.unique(df['frame'])
     n_iter = len(files) * len(frames)
     with tqdm(total=n_iter, desc='Adding neighbour lists') as progress:
         for f in files:
-            file_df = df[df['path'] == f]
+            file_df = df[df[sample_col] == f]
             frames = pd.unique(df['frame'])
             for frame in frames:
-                frame_wise_neigbour_lists(file_df, frame, max_dist, nb_df)
+                frame_wise_neigbour_lists(file_df, frame, max_dist, nb_df, coords)
                 progress.update(1)
     df = pd.concat([df.set_index('pid'), nb_df], axis=1).reset_index()
     return df
 
 
-def frame_wise_neigbour_lists(df, frame, max_dist, nb_df):
+def frame_wise_neigbour_lists(df, frame, max_dist, nb_df, coords):
     f_df = df[df['frame'] == frame]
     f_df = f_df.set_index('pid') 
     idxs = f_df.index.values
     # get the coodinates as an array (r = points, c = dims)
-    p_coords = f_df[['x_s', 'ys', 'zs']].values
+    p_coords = f_df[coords].values
     tree1 = cKDTree(p_coords, copy_data=True)
     tree2 = cKDTree(p_coords, copy_data=True)
     sdm = tree1.sparse_distance_matrix(tree2, max_dist)
@@ -66,6 +67,44 @@ def frame_wise_neigbour_lists(df, frame, max_dist, nb_df):
 #TODO
 
 def local_contraction(df, r=15):
+    """
+    This measures how much closer neighbour platelets get to a platelet between
+    consecutive time points. 
+    """
+    dist_col = f'nb_disp_{r}'
+    df[dist_col] = df[dist_col].apply(eval)
+    df[f'av_nb_disp_{r}'] = df[dist_col].apply(average_distance)
+    df = df.sort_values('time (s)', ascending=False)
+    lc_finc = dist_diffs(f'av_nb_disp_{r}')
+    #df[f'nb_cont_{r}'] = df.groupby(['particle', 'path']).apply(lc_finc) # unsure why this doesn't work
+    n = len(df.groupby(['particle', 'path'])[f'av_nb_disp_{r}'].mean())
+    with tqdm(total=n, desc='local contraction') as progress:
+        for k, grp in df.groupby(['particle', 'path']):
+            idxs = grp.index.values
+            vals = lc_finc(grp)
+            df.loc[idxs, f'nb_cont_{r}'] = vals
+            progress.update(1)
+    return df
+
+
+def average_distance(dlist):
+    if len(dlist) > 0:
+        return np.sum(dlist) / len(dlist)
+    else:
+        return 15.0
+
+
+
+@curry
+def dist_diffs(var, grp):
+    # group by platelet ("particle")
+    s = len(grp)
+    diff = np.diff(grp[var].values)
+    diff = np.concatenate([[np.nan, ], diff])
+    return diff
+
+
+def local_contraction_old(df, r=15):
     '''
     Local contraction is the extent to which the platelet has moved closer to its
     assigned neighbour platelets since the previous point in time
@@ -162,7 +201,7 @@ def _local_contraction(df, r, pid):
 # Local Static Measures
 # ---------------------
 
-def local_density(df, r=15, z_max=66):
+def local_density(df, r=15, z_max=66, sample_col='path'):
     '''
     Density of the neighbour platelets in the sphere (radius r) around the platelet. 
     The area of the sphere is corrected for the top and the bottom of the image 
@@ -177,12 +216,12 @@ def local_density(df, r=15, z_max=66):
     neighbour density = n/A
     '''
     df = df.set_index('pid')
-    files = pd.unique(df['path'])
+    files = pd.unique(df[sample_col])
     n_iter = len(df)
     sphere_size = ((4 * np.pi * r**3) / 3)
     with tqdm(total=n_iter, desc='Adding neighbour density') as progress:
         for f in files:
-            f_df = df[df['path'] == f].reset_index()
+            f_df = df[df[sample_col] == f].reset_index()
             idxs = f_df['pid'].values
             get_density = _local_density(f_df, r, z_max, sphere_size)
             #densities = f_df['pid'].apply(get_density)
@@ -377,6 +416,7 @@ def _ensure_list(list_or_string):
         nbs = eval(list_or_string)
     else:
         nbs = list_or_string
+        nbs = list(list_or_string)
     assert isinstance(nbs, list)
     return nbs
 
@@ -456,4 +496,18 @@ def _nearest_neighbours_average(pc):
         key_dist[('nba_d_' + str(nba_list[0]))]=a
     df=pd.DataFrame(key_dist)
     df=pd.concat([p1i, df], axis=1)
+    return df
+
+
+def local_densification(df):
+    df = df.sort_values('time (s)')
+    for k, grp in df.groupby(['path', 'particle']):
+        idx = grp.index.values
+        vals = np.diff(grp['nb_density_15'].values)
+        vals = np.concatenate([[np.nan, ], vals])
+        vals = vals * 0.32
+        df.loc[idx, 'densification (/um3/sec)'] = vals
+    df = smooth_vars(df, ['densification (/um3/sec)', ], 
+                     w=15, t='time (s)', gb=['path', 'particle'], 
+                     add_suff=None)
     return df

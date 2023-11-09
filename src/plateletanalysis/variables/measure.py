@@ -22,7 +22,8 @@ import os
 def finite_difference_derivatives(
     df, 
     coords=('x_s', 'ys', 'zs'), # can use spherical coordinates here
-    names=('dvx', 'dvy', 'dvz', 'dv') # can name for spherical coordinates
+    names=('dvx', 'dvy', 'dvz', 'dv'), # can name for spherical coordinates
+    sample_col='path', 
     ):
     '''
     Finite difference estimates of the velocity in 3D. 
@@ -44,9 +45,9 @@ def finite_difference_derivatives(
         names[2] : np.array([np.nan, ] * len(df)).astype(np.float64),  
         'pid' : df.index.values
     }
-    files = pd.unique(df['path'])
+    files = pd.unique(df[sample_col])
     for f in files:
-        img_df = df[df['path'] == f]
+        img_df = df[df[sample_col] == f]
         platelets = pd.unique(img_df['particle'])
         n_iter = len(platelets)
         with tqdm(total=n_iter, desc=f'Finite difference derivatives for {f}') as progress:
@@ -75,17 +76,17 @@ def finite_difference_derivatives(
 
 
 
-def add_finite_diff_derivative(df, col):
-    files = pd.unique(df['path'])
+def add_finite_diff_derivative(df, col, sample_col):
+    files = pd.unique(df[sample_col])
     n_iter = 0
     for f in files:
-        f_df = df[df['path'] == f]
+        f_df = df[df[sample_col] == f]
         platelets = pd.unique(df['particle'])
         n_iter += len(platelets)
     #df = df.set_index('pid')
     with tqdm(total=n_iter, desc=f'Adding finite difference derivatives for {col}') as progress:
         for f in files:
-            file_df = df[df['path'] == f]
+            file_df = df[df[sample_col] == f]
             platelets = pd.unique(df['particle'])
             for p in platelets:
                 p_df = file_df[file_df['particle'] == p]
@@ -539,7 +540,7 @@ def quantile_normalise_variables_frame(
         vars=('nb_density_15', )
     ):
     files = pd.unique(df['path'])
-    t_max = df['frame'].max()
+    t_max = int(df['frame'].max())
     with tqdm(total=len(files)*len(vars)*t_max) as progress:
         for f in files:
             fdf = df[df['path'] == f]

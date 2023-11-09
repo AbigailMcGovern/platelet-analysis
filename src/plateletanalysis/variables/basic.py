@@ -320,14 +320,14 @@ def add_tot_variables(pc1):
     return pc1
 
 
-def tracknr_variable(pc):
+def tracknr_variable(pc, sample_col='path'):
     try:
         pc = pc.drop(['level_0'], axis=1)
     except:
         pass
     pc = pc.reset_index()
     # Tracknr raknar vilken trackning i ordningen en viss observation ar
-    tracknr=pc.groupby(['path','particle'])['frame'].rank()
+    tracknr=pc.groupby([sample_col,'particle'])['frame'].rank()
     pc['tracknr']=tracknr
     return pc
 
@@ -339,9 +339,9 @@ def tracked_variable(df):
 
 
 def get_treatment_name(inh): # need to rename from last run 
-    if 'saline' in inh:
+    if 'saline' in inh or 'Saline' in inh:
         out = 'saline'
-    elif 'cang' in inh:
+    elif 'cang' in inh or 'Cang' in inh:
         out = 'cangrelor'
     elif 'veh-mips' in inh:
         out = 'DMSO (MIPS)'
@@ -353,7 +353,7 @@ def get_treatment_name(inh): # need to rename from last run
         out = 'PAR4-- bivalirudin'
     elif 'par4--' in inh:
         out = 'PAR4--'
-    elif 'biva' in inh:
+    elif 'biva' in inh or 'Bivalirudin' in inh:
         out = 'bivalirudin'
     elif 'SalgavDMSO' in inh or 'gavsalDMSO' in inh or 'galsavDMSO' in inh:
         out = 'DMSO (salgav)'
@@ -363,7 +363,7 @@ def get_treatment_name(inh): # need to rename from last run
         out = 'DMSO (MIPS)'
     elif 'dmso' in inh:
         out = 'DMSO (SQ)'
-    elif 'ctrl' in inh:
+    elif 'ctrl' in inh or 'Ctrl' in inh:
         out = 'control'
     else:
         out = inh
@@ -414,6 +414,24 @@ def add_region_category(df):
     df.loc[idxs, 'region'] = 'posterior'
     return df
 
+
+def add_quadrant(df):
+    rcyl = (df.x_s ** 2 + df.ys ** 2) ** 0.5
+    df['rcyl'] = rcyl
+    df['quadrant'] = [None, ] * len(df)
+    # anterior
+    rdf = df[df['phi'] > 0.785398]
+    idxs = rdf.index.values
+    df.loc[idxs, 'quadrant'] = 'anterior'
+    # lateral
+    rdf = df[(df['phi'] < 0.785398) & (df['phi'] > -0.785398)]
+    idxs = rdf.index.values
+    df.loc[idxs, 'quadrant'] = 'lateral'
+    # posterior
+    rdf = df[df['phi'] < -0.785398]
+    idxs = rdf.index.values
+    df.loc[idxs, 'quadrant'] = 'posterior'
+    return df
 
 
 def add_nrtracks(df):
@@ -602,3 +620,50 @@ def isoA_var(df, nA_in_injury=10):
     radii[-1] = 250
     df['iso_A'] = pd.cut(df['dist_c'],radii,labels=radii[1:]).astype('float64').round(1)
     return df
+
+
+def classify_exp_type(path):
+    if path.find('exp5') != -1:
+        return '10-20 min'
+    elif path.find('exp3') != -1:
+        return '0-10 min'
+    else:
+        return 'other'
+    
+
+def time_bin_1_2_5_10(t):
+    lbs = [0, 60, 120, 300]#, 600]
+    ubs = [60, 120, 300, 600]#, 1200]
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return f'{l}-{u} s'
+        
+
+def time_bin_2_5_10_20(t):
+    lbs = [0, 120, 300, 600]
+    ubs = [120, 300, 600, 1200]
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return f'{l}-{u} s'
+        
+        
+def cyl_bin(t):
+    lbs = np.linspace(0, 100)[0:-1]
+    ubs = np.linspace(0, 100)[1:]
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return l + 0.5 * (u - l)
+        
+
+@curry
+def curried_timebin(lbs, ubs, t):
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return f'{l}-{u} s'
+        
+
+@curry
+def curried_midpoint_bin(lbs, ubs, t):
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return l + 0.5 * (u - l)
