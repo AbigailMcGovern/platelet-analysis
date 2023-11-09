@@ -36,32 +36,54 @@ def get_files(path, pattern):
 # ------
 
 
-def points_VTK(df, path):
-    data_columns = ['frame', 'c0_mean', 
-               'c1_mean', 'ca_corr', 'dvx', 'dvy', 'dvz', 'dv',
-               'particle', 'cont','nrtracks','tracknr',
-               'nd15_percentile', 'nb_ca_corr_15', 'fibrin_dist_pcnt', 'nb_density_15_pcntf']
+def points_VTK(
+        df, 
+        path, 
+        coord_cols = ('x_s', 'ys', 'zs'),
+        dv_cols = ('dvx', 'dvy', 'dvz'),
+        data_columns = ('frame', 'c0_mean', 
+                        'c1_mean', 'ca_corr', 
+                        'dvx', 'dvy', 'dvz', 'dv',
+                        'particle', 'cont','nrtracks',
+                        'tracknr', 'nd15_percentile', 
+                        'nb_ca_corr_15', 'fibrin_dist_pcnt', 
+                        'nb_density_15_pcntf')
+    ):
     df = df[df.nrtracks>10]
     frame_max = df.frame.max()
     for frame in range(frame_max):
-        df_do = df[df.frame==frame]
+        df_do = find_decent_frame(df, frame, frame_max)
         data = {}
         for col in data_columns:
             data[col] = vtk_compat(df_do[[col]].values)
-
-        x = df_do[['x_s']].values
-        y = df_do[['ys']].values
-        z = df_do[['zs']].values
-
-        dvx = df_do[['dvx']].values
-        dvy = df_do[['dvy']].values
-        dvz = df_do[['dvz']].values
+        x = df_do[[coord_cols[0]]].values
+        x = vtk_compat(x)
+        y = df_do[[coord_cols[1]]].values
+        y = vtk_compat(y)
+        z = df_do[[coord_cols[2]]].values
+        z = vtk_compat(z)
+        dvx = df_do[[dv_cols[0]]].values
+        dvx = vtk_compat(dvx)
+        dvy = df_do[[dv_cols[1]]].values
+        dvy = vtk_compat(dvy)
+        dvz = df_do[[dv_cols[2]]].values
+        dvz = vtk_compat(dvz)
         filename = f'points_{frame}'
         file_path = os.path.join(path, filename)
         #data = {'v' : vtk_compat(values), 'dvx' : vtk_compat(dvx), 'dvy' : vtk_compat(dvy), 'dvz' : vtk_compat(dvz),}
-        data['vector'] = (vtk_compat(dvx), vtk_compat(dvy), vtk_compat(dvz),)
-        pointsToVTK(file_path, vtk_compat(x), vtk_compat(y), vtk_compat(z), data)
+        data['vector'] = (dvx, dvy, dvz,)
+        pointsToVTK(file_path, x, y, z, data)
         print(frame, '-', end='')
+
+
+def find_decent_frame(df, frame, max_frame):
+    df_do = df[df.frame==frame]
+    if len(df_do) == 0 and frame >= 0 and frame < max_frame - 10:
+        return find_decent_frame(df, frame + 1, max_frame)
+    elif len(df_do) == 0 and frame >= max_frame - 10:
+        return find_decent_frame(df, frame - 1, max_frame)
+    elif len(df_do) > 0:
+        return df_do
 
 
 # Use sml_df  = df[df['path'] == '200527_IVMTR73_Inj4_saline_exp3']
@@ -209,3 +231,21 @@ def kde_vector_volume(df_sel, path, exp_tag, t_extra = 2):
         export_vol(export_file, data, origin)
         #time_series_export['files'].append(dict(name = export_file, time = float(t_point)))
         print(t_point, end='-')
+
+
+
+if __name__ == '__main__':
+    tp0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/200910_MxV_hir_600is.parquet'
+    tp1 = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes/211206_veh-sq_df.parquet'
+    n1 = '200519_IVMTR69_Inj4_dmso_exp3'
+    df0 = pd.read_parquet(tp0)
+    #df1 = pd.read_parquet(tp1)
+    #df1 = df1[df1['path'] == n1]
+    df0['xs'] = df0['xs'] / 0.32 * 0.5
+    df0['ys'] = df0['ys'] / 0.32 * 0.5
+    save_dir_0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/ex-vivo-demo'
+    save_dir_1 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/in-vivo-demo'
+    data_columns = ['frame', 'nrtracks', 'nb_density_15']
+    points_VTK(df0, save_dir_0, data_columns=data_columns, coord_cols=('xs', 'ys', 'zs'))
+    #points_VTK(df1, save_dir_1, data_columns=data_columns)
+

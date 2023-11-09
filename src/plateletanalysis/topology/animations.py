@@ -102,7 +102,7 @@ def persistance_diagrams_for_timepointz(
         path='200527_IVMTR73_Inj4_saline_exp3', 
         tps=(10, 28, 115, 190)
         ):
-
+    plt.rcParams['svg.fonttype'] = 'none'
     df = df[df['path'] == path]
     df = df[df[col] > centile]
     tp_dfs = {}
@@ -126,7 +126,7 @@ def persistance_diagrams_for_timepointz(
         tp_dfs[t] = data
     n_graphs = len(tps)
     sns.set_style("ticks")
-    fig, axes = plt.subplots(n_graphs, 1, sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, n_graphs, sharex=True, sharey=True)
     max_size = 150
     max_diffs = {}
     mdl = []
@@ -146,7 +146,7 @@ def persistance_diagrams_for_timepointz(
         g = sns.scatterplot(x, y, hue=hue, data=plot_df, palette='rocket', ax=ax, size=size, sizes=(10, ms), edgecolor='black')
         ax.axline((0, 0), (1, 1), ls='--', c='black')
         ax.axhline(max, ls='--', c='black')
-        sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-    fig.subplots_adjust(right=0.6)
+        #sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    #fig.subplots_adjust(right=0.6)
     plt.show()
 

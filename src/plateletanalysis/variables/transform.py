@@ -42,8 +42,8 @@ def adjust_coordinates(
         ys_1=df.loc[df[path_col]==file, ys_col].copy()
         #print(xs_1,xs_1-adjust_x)
         #zs_1=df_exp.loc[df_exp.file==file,'zs'].copy()
-        df.loc[df.path==file, xs_col]=xs_1-adjust_x#+150
-        df.loc[df.path==file, ys_col]=ys_1-adjust_y
+        df.loc[df[path_col] == file, xs_col]=xs_1-adjust_x#+150
+        df.loc[df[path_col] == file, ys_col]=ys_1-adjust_y
     rot = Rot.from_euler('z', -rot_angle, degrees=True)#Förut -rot_angle
     xyz = df[[xs_col, ys_col, zs_col]].to_numpy()
     xyz_rot = rot.apply(xyz)

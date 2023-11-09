@@ -5,7 +5,7 @@ from .variables.transform import adjust_coordinates, spherical_coordinates, cyli
 from .variables.basic import add_basic_variables_to_files, add_region_category, tri_phase_var, bin_by_var_linear
 from .variables.calcium import corrected_calcium
 from.variables.neighbours import add_neighbour_lists, local_density, average_neighbour_distance
-from.analysis.summary_data import rolling_counts_and_growth_plus_peaks, quantile_analysis_data, \
+from.analysis.mips_analysis import rolling_counts_and_growth_plus_peaks, quantile_analysis_data, \
     inside_and_outside_injury_counts_density, \
         inside_and_outside_injury_counts_density_thrombus_size, \
             experiment_time_region_data, region_parallel_coordinate_data, \

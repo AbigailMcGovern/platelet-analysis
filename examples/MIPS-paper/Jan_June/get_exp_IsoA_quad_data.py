@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import numpy as np
 from plateletanalysis import add_basic_variables_to_files
-from plateletanalysis.analysis.summary_data import experiment_quadrant_isoA_phase_data
+from plateletanalysis.analysis.mips_analysis import experiment_quadrant_isoA_phase_data
 
 
 # ------------------

@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from plateletanalysis import add_basic_variables_to_files
-from plateletanalysis.analysis.summary_data import quadrant_isoA_phase_data, quadrant_isoA_heatmap_data
+from plateletanalysis.analysis.mips_analysis import quadrant_isoA_phase_data, quadrant_isoA_heatmap_data
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
