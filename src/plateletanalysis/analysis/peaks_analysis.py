@@ -10,6 +10,7 @@ from plateletanalysis.analysis.summary_measures import recruitment_phase, sheddi
         initial_platelet_velocity_change, var_for_first_3_frames
 import seaborn as sns
 import matplotlib.pyplot as plt 
+from plateletanalysis.variables.basic import psel_bin
 
 
 # -------------------
@@ -303,6 +304,94 @@ def peak_analysis_size(grp, var, t_col='time (s)', height=None, prom=None, dist=
     return duration, height, prominence, mean, latency
 
 
+# ----------------
+# Dist from centre
+# ----------------
+
+def var_over_cylr(df, col, gb, gb1=['path', 'time_bin']):
+    cols = [col, ]
+    data = groupby_summary_data_mean(df, gb, cols)
+    data = smooth_vars(data, vars=cols, gb=gb1, t='cylr_bin', w=4)
+    data = data.dropna()
+    return data
+
+
+def plot_var_over_cylr(df, col):
+    gb = ['path', 'time_bin', 'cylr_bin']
+    data = var_over_cylr(df, col, gb)
+    plt.rcParams['svg.fonttype'] = 'none'
+    ax = sns.lineplot(data=data, y=col, x='cylr_bin', palette='rocket', hue='time_bin')
+    ax.axline((37.5, 0), (37.5, 0.001), color='grey')
+    sns.despine()
+    plt.show()
+
+
+
+def plot_var_over_cylr_ind(df, col):
+    gb = ['path', 'cylr_bin']
+    data = var_over_cylr(df, col, gb)
+    plt.rcParams['svg.fonttype'] = 'none'
+    ax = sns.lineplot(data=data, y=col, x='cylr_bin', palette='rocket', hue='path')
+    ax.axline((37.5, 0), (37.5, 0.001), color='grey')
+    sns.despine()
+    plt.show()
+
+
+
+def cylr_zerocrossing_box(df, col):
+    gb = ['path', 'cylr_bin']
+    cols = [col, ]
+    df = df[df['time_bin'] == '0-60 s']
+    data = groupby_summary_data_mean(df, gb, cols)
+    data = smooth_vars(df, vars=cols, gb=['path', ], t='cylr_bin', w=8)
+    data = mark_as_bookends(data, gb, col)
+    data = data[data['bookends'] == True]
+    data = data.groupby(['path', ])['cylr_bin'].mean().reset_index()
+    data = data.dropna()
+    print(data)
+    print(len(data))
+    print(len(pd.unique(data.path)))
+    plt.rcParams['svg.fonttype'] = 'none'
+    ax = sns.boxplot(data=data, y='cylr_bin', palette='rocket')
+    sns.stripplot(data=data, y='cylr_bin', ax=ax, palette='rocket', edgecolor='white', linewidth=0.3, jitter=True, size=5,)
+    sns.despine()
+    plt.show()
+
+
+def cylr_zerocrossing_box_mins(df, col):
+    gb = ['path', 'time_bin', 'cylr_bin']
+    cols = [col, ]
+    df = df[(df['time_bin'] == '0-60 s') | (df['time_bin'] == '60-120 s')]
+    data = groupby_summary_data_mean(df, gb, cols)
+    data = smooth_vars(data, vars=cols, gb=['path', 'time_bin'], t='cylr_bin', w=8)
+    data = mark_as_bookends(data, gb, col)
+    data = data[data['bookends'] == True]
+    data = data.groupby(['path', 'time_bin'])['cylr_bin'].mean().reset_index()
+    data = data.dropna()
+    plt.rcParams['svg.fonttype'] = 'none'
+    ax = sns.boxplot(data=data, y='cylr_bin', x='time_bin', palette='rocket')
+    sns.stripplot(data=data, y='cylr_bin',  x='time_bin', ax=ax, palette='rocket', edgecolor='white', linewidth=0.3, jitter=True, size=5,)
+    sns.despine()
+    plt.show()
+
+
+def mark_as_bookends(data, gb, col):
+    data = data.sort_values('cylr_bin')
+    for k, grp in data.groupby(gb):
+        prev = None
+        vals = []
+        idx = grp.index.values
+        for i, v in enumerate(grp[col].values):
+            if prev is not None and 0 > prev and 0 < v:
+                vals.append(True)
+            else:
+                vals.append(False)
+            prev = v
+        data.loc[idx, 'bookends'] = vals
+    return data
+
+
+
 # -------
 # Helpers
 # -------
@@ -320,6 +409,27 @@ def smooth_vars(df, vars, w=15, t='time (s)', gb=['path', 'particle'], add_suff=
             df.loc[idxs, v_n] = rolled
     return df
 
+
+def groupby_summary_data_mean(df, gb, cols):
+    data = defaultdict(list)
+    for k, grp in df.groupby(gb):
+        for i, c in enumerate(gb):
+            data[c].append(k[i])
+        for c in cols:
+            data[c].append(np.nanmean(grp[c].values))
+    data = pd.DataFrame(data)
+    return data
+
+
+
+def groupby_summary_data_counts(df, gb):
+    data = defaultdict(list)
+    for k, grp in df.groupby(gb):
+        for i, c in enumerate(gb):
+            data[c].append(k[i])
+        data['platelet count'].append(len(pd.unique(grp['particle'])))
+    data = pd.DataFrame(data)
+    return data
 
 
 # Curve experimentation
@@ -347,3 +457,24 @@ def find_curves_exp(df, var, w=None, height=None, prom=None, dist=None, t_col='t
     sns.lineplot(data=df, x='time (s)', y=var, ax=ax, hue='path')
     sns.scatterplot(data=result, x='time (s)', y=var, ax=ax, hue='path')
     plt.show()
+
+
+# ----------
+# P selectin
+# ----------
+    
+def psel_pcnt(df):
+    n = len(pd.unique(df['particle']))
+    psel = df[df['psel'] == True]
+    p = len(pd.unique(psel['particle']))
+    return p / n * 100
+    
+
+def percent_psel_pos(df, gb=['path', 'time (s)']):
+    if 'psel' not in df.columns.values:
+        df = psel_bin(df)
+    data = df.groupby(gb).apply(psel_pcnt).reset_index()
+    data = data.rename(columns={0 :  'p-selectin positive platelets (%)'})
+    return data
+
+
