@@ -235,17 +235,28 @@ def kde_vector_volume(df_sel, path, exp_tag, t_extra = 2):
 
 
 if __name__ == '__main__':
-    tp0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/200910_MxV_hir_600is.parquet'
-    tp1 = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes/211206_veh-sq_df.parquet'
-    n1 = '200519_IVMTR69_Inj4_dmso_exp3'
-    df0 = pd.read_parquet(tp0)
-    #df1 = pd.read_parquet(tp1)
-    #df1 = df1[df1['path'] == n1]
-    df0['xs'] = df0['xs'] / 0.32 * 0.5
-    df0['ys'] = df0['ys'] / 0.32 * 0.5
-    save_dir_0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/ex-vivo-demo'
-    save_dir_1 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/in-vivo-demo'
-    data_columns = ['frame', 'nrtracks', 'nb_density_15']
-    points_VTK(df0, save_dir_0, data_columns=data_columns, coord_cols=('xs', 'ys', 'zs'))
-    #points_VTK(df1, save_dir_1, data_columns=data_columns)
+    #do = 'finding_and_following'
+    do = 'toroidal'
+    if do == 'finding_and_following':
+        tp0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/200910_MxV_hir_600is.parquet'
+        tp1 = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes/211206_veh-sq_df.parquet'
+        n1 = '200519_IVMTR69_Inj4_dmso_exp3'
+        df0 = pd.read_parquet(tp0)
+        #df1 = pd.read_parquet(tp1)
+        #df1 = df1[df1['path'] == n1]
+        df0['xs'] = df0['xs'] / 0.32 * 0.5
+        df0['ys'] = df0['ys'] / 0.32 * 0.5
+        save_dir_0 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/ex-vivo-demo'
+        save_dir_1 = '/Users/abigailmcgovern/Data/iterseg/invitro_platelets/ACBD/mouse/tracking/paraview/in-vivo-demo'
+        data_columns = ['frame', 'nrtracks', 'nb_density_15']
+        points_VTK(df0, save_dir_0, data_columns=data_columns, coord_cols=('xs', 'ys', 'zs'))
+        #points_VTK(df1, save_dir_1, data_columns=data_columns)
+    elif do == 'toroidal':
+        p = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes/211206_saline_df_toroidal-coords-1.parquet'
+        df = pd.read_parquet(p)
+        inj = '200527_IVMTR73_Inj4_saline_exp3'
+        df = df[df['path'] == inj]
+        data_columns = ['frame', 'nrtracks', 'nb_density_15', 'tor_theta', 'tor_theta_diff']
+        sd = '/Users/abigailmcgovern/Data/platelet-analysis/toroidal_paper/figure_8/'
+        points_VTK(df, sd, data_columns=data_columns, coord_cols=('x_s', 'ys', 'zs'))
 

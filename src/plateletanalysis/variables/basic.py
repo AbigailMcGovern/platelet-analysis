@@ -529,14 +529,25 @@ def add_shedding(df):
 
 def size_var(df):
     '''Was this from a thrombus that is from the largest 50th centile or the smallest?'''
-    df_size = df.groupby(['treatment', 'path']).size(#df[df.nrtracks>1].groupby(['inh','path']).size(
-        ).groupby(level=0).transform(lambda x: pd.qcut(x,2,labels=['small','large'])).rename('size').reset_index()
-    df = df.merge(df_size, on = ['treatment', 'path'])
-    size = df['size'].values
-    df = df.drop(columns='size')
-    df['size'] = size
+    df_size = df.groupby(['treatment', 'path'])['particle'].apply(_count).reset_index(drop=False)
+    df = df.set_index('path')
+    print(df.index.values[:10])
+    for k, grp in df_size.groupby('treatment'):
+        idxs = grp['path'].values
+        #print(idx)
+        labs = pd.Series(pd.qcut(grp['particle'].values, 2, labels=['small', 'large']))
+        for i, idx in enumerate(idxs):
+            df.loc[idx, 'size'] = labs.values[i]
+    df = df.reset_index(drop=False)
     return df 
 
+
+def _count(df):
+    return len(pd.unique(df))
+
+@curry
+def _map_size(dict, df):
+    pass
 
 def hsec_var(df):
     '''which 100 seconds?'''
@@ -667,3 +678,37 @@ def curried_midpoint_bin(lbs, ubs, t):
     for l, u in zip(lbs, ubs):
         if t >= l and t < u:
             return l + 0.5 * (u - l)
+        
+
+def adjust_time_for_exp_type(df):
+    if 'time (s)' not in df.columns:
+        df = time_seconds(df)
+    if 'exp_type' not in df.columns:
+        df['exp_type'] = df['path'].apply(classify_exp_type)
+    for k, grp in df.groupby('exp_type'):
+        if k == '10-20 min':
+            idxs = grp.index.values
+            df.loc[idxs, 'time (s)'] = df.loc[idxs, 'time (s)'] + 600
+    return df
+
+
+def add_psel_bin(vals):
+    if vals.mean() > 544:
+        return [True, ] * len(vals)
+    else:
+        return [False, ] * len(vals)
+    
+
+def psel_bin(df):
+    print('psel bin')
+    for k, grp in df.groupby(['path', 'particle']):
+        idx = grp.index.values
+        vals = add_psel_bin(grp['p-sel average intensity'].values)
+        df.loc[idx, 'psel'] = vals
+    #df['psel'] = df.groupby(['path', 'particle'])['p-sel average intensity'].apply(add_psel_bin)
+    return df
+
+
+
+
+

@@ -2,6 +2,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation as Rot
 import pandas as pd
 from toolz import curry
+from plateletanalysis.analysis.peaks_analysis import var_over_cylr
+from collections import defaultdict
 
 # ---------------------
 # Cartesian Coordinates
@@ -230,3 +232,62 @@ def _calculate_cylindrical_azimuthal(xyr):
     x, y, r = xyr
     phi = np.arctan(y/np.abs(x)) * 180 / np.pi
     return phi
+
+
+
+# --------------------
+# Toroidal coordinates
+# --------------------
+
+def toroidal_coordinates(df):
+    """
+    A coordinate system that offers a thrombus specific adjustment of the 
+    """
+    # get information about max density peak distance from centre
+    gb = ['path', 'cylr_bin', 'time_bin']
+    #data = var_over_cylr(df, 'nb_density_15', gb)
+    #data_max = path_dist_at_max(data, ['path', 'time_bin'], 'nb_density_15', dist='cylr_bin')
+    # get the tor rho coordinate
+    #df = tor_rho_coord(data_max, df) # tor has three coords: rho, z, and theta
+    df['tor_rho'] = df['cyl_radial'] - 37.5
+    # get tor theta coordinate: will go between +90 (floor outer edge) and -90 (floor inner edge)
+    df = tor_theta_coord(df)
+    # the coordinates have been visually checked... looks very good!! 
+    return df
+
+
+def path_dist_at_max(data, gb, col, dist='cylr_bin'):
+    # return df of path and max
+    out = defaultdict(list)
+    for k, grp in data.groupby(gb):
+        for i, c in enumerate(gb):
+            out[c].append(k[i])
+        midx = np.argmax(grp[col].values)
+        m = grp[col].values[midx]
+        md = grp[dist].values[midx]
+        out[col].append(m)
+        out[dist].append(md)
+    out = pd.DataFrame(out)
+    return out
+
+
+def tor_rho_coord(data_max, df):
+    for k, grp in df.groupby(['path', 'time_bin']):
+        pdata = data_max[(data_max['path'] == k[0]) & (data_max['time_bin'] == k[1])]
+        dist_max = pdata['cylr_bin'].values
+        idxs = grp.index.values
+        vals = grp['cyl_radial'] - dist_max
+        df.loc[idxs, 'tor_rho'] = vals
+    return df
+
+
+def tor_theta_coord(df):
+    # in degrees 
+    # more negative = more central/epithelial
+    # more positive = more distal/epithelial
+    tan_theta = df['zs'] / df['tor_rho']
+    coef = df['tor_rho'] / np.abs(df['tor_rho'])
+    df['tor_theta'] = coef * 90 - np.arctan(tan_theta) / np.pi * 180
+    return df
+
+
