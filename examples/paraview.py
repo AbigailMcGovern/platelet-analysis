@@ -251,12 +251,17 @@ if __name__ == '__main__':
         data_columns = ['frame', 'nrtracks', 'nb_density_15']
         points_VTK(df0, save_dir_0, data_columns=data_columns, coord_cols=('xs', 'ys', 'zs'))
         #points_VTK(df1, save_dir_1, data_columns=data_columns)
+    
     elif do == 'toroidal':
+        from plateletanalysis.variables.neighbours import local_contraction
         p = '/Users/abigailmcgovern/Data/platelet-analysis/dataframes/211206_saline_df_toroidal-coords-1.parquet'
         df = pd.read_parquet(p)
+        #df = pd.read_parquet('/Users/abigailmcgovern/Data/platelet-analysis/dataframes/saline_ctrl_biva_cang_par4.parquet')
         inj = '200527_IVMTR73_Inj4_saline_exp3'
         df = df[df['path'] == inj]
-        data_columns = ['frame', 'nrtracks', 'nb_density_15', 'tor_theta', 'tor_theta_diff']
-        sd = '/Users/abigailmcgovern/Data/platelet-analysis/toroidal_paper/figure_8/'
+        df = local_contraction(df)
+        data_columns = ['frame', 'nrtracks', 'nb_density_15', 'tor_theta', 'tor_theta_diff', 'nb_cont_15']
+        #sd = '/Users/abigailmcgovern/Data/platelet-analysis/toroidal_paper/figure_8/'
+        sd = '/Users/abigailmcgovern/Data/platelet-analysis/toroidal_paper/figure_9/local_cont_para_1'
         points_VTK(df, sd, data_columns=data_columns, coord_cols=('x_s', 'ys', 'zs'))
 
