@@ -101,7 +101,7 @@ def dist_diffs(var, grp):
     s = len(grp)
     diff = np.diff(grp[var].values)
     diff = np.concatenate([[np.nan, ], diff])
-    return diff
+    return - diff * 0.32 # adjust for time to get µm/s
 
 
 def local_contraction_old(df, r=15):

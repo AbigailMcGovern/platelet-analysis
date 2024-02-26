@@ -649,6 +649,13 @@ def time_bin_1_2_5_10(t):
         if t >= l and t < u:
             return f'{l}-{u} s'
         
+def time_bin_30_3060_1_2_5_10(t):
+    lbs = [0, 30, 60, 120, 300]#, 600]
+    ubs = [30, 60, 120, 300, 600]#, 1200]
+    for l, u in zip(lbs, ubs):
+        if t >= l and t < u:
+            return f'{l}-{u} s'
+        
 
 def time_bin_2_5_10_20(t):
     lbs = [0, 120, 300, 600]
