@@ -69,7 +69,6 @@ dfs = pd.read_csv(sp)
 
 dfs['inhibited'] = dfs['treatment'].apply(inhibited)
 
-dfs = dfs[dfs['inhibited'] == False]
 
 
 
@@ -78,14 +77,88 @@ dfs = dfs[dfs['inhibited'] == False]
 #density
 #plot_box_plots(dfs, 'toroidal', 'density')
 
-dfs_t = dfs[dfs['toroidal']]
-dfs_n = dfs[dfs['toroidal'] == False]
-
 #res = stats.ttest_ind(dfs_t['n embolysis events - C'].values, dfs_n['n embolysis events - C'].values)
 #print(res) # Ttest_indResult(statistic=-3.7874589092392155, pvalue=0.00027441649159005836)
 
 #res = stats.ttest_ind(dfs_t['dvz - G'].values, dfs_n['dvz - G'].values)
 #print(res) # Ttest_indResult(statistic=4.017388761583911, pvalue=0.00012185041667879984)
+
+#do = 'figure 5.7'
+#do = 'figure 5.6'
+do = 'figure 5.4'
+
+if do == 'figure 5.7':
+    c = 'mean platelet count'
+    e = 'n embolysis events'
+    i = 'instability'
+    n = 'nrtracks'
+    y = 'dvy'
+    #y = 'initial decelleration'
+    #y = 'latency max count'
+    d = 'density'
+    dfs = dfs[dfs['inhibited'] == False]
+    dfs_t = dfs[dfs['toroidal']]
+    dfs_n = dfs[dfs['toroidal'] == False]
+    print('number toroidal:')
+    print(len(dfs_t))
+    print('number non-toroidal:')
+    print(len(dfs_n))
+    print(e)
+    print('toroidal: ', dfs_t[e].mean(), ' +/- ', dfs_t[e].sem())
+    print('non: ', dfs_n[e].mean(), ' +/- ', dfs_n[e].sem())
+    res = stats.ttest_ind(dfs_t[e].values, dfs_n[e].values)
+    print(res)
+
+    print(d)
+    print('toroidal: ', dfs_t[d].mean(), ' +/- ', dfs_t[d].sem())
+    print('non: ', dfs_n[d].mean(), ' +/- ', dfs_n[d].sem())
+    res = stats.ttest_ind(dfs_t[d].values, dfs_n[d].values)
+    print(res)
+
+    print(n)
+    print('toroidal: ', dfs_t[n].mean(), ' +/- ', dfs_t[n].sem())
+    print('non: ', dfs_n[n].mean(), ' +/- ', dfs_n[n].sem())
+    res = stats.ttest_ind(dfs_t[n].values, dfs_n[n].values)
+    print(res)
+
+    print(y)
+    print('toroidal: ', dfs_t[y].mean(), ' +/- ', dfs_t[y].sem())
+    print('non: ', dfs_n[y].mean(), ' +/- ', dfs_n[y].sem())
+    res = stats.ttest_ind(dfs_t[y].values, dfs_n[y].values)
+    print(res)
+
+elif do == 'figure 5.6':
+    cang = dfs[dfs['treatment'] == 'cangrelor']
+    saline = dfs[dfs['treatment'] == 'saline']
+    var = 'donutness magnetude'
+
+    print('number cangrelor')
+    print(len(cang))
+    print(cang[var].mean(), ' +/- ', cang[var].sem())
+
+    print('number saline')
+    print(len(saline))
+    print(saline[var].mean(), ' +/- ', saline[var].sem())
+
+    res = stats.mannwhitneyu(cang[var].values, saline[var].values)
+    print(res)
+
+
+elif do == 'figure 5.4':
+    biva = dfs[dfs['treatment'] == 'bivalirudin']
+    saline = dfs[dfs['treatment'] == 'saline']
+    var = 'donutness magnetude'
+
+    print('number bivalirudin')
+    print(len(biva))
+    print(biva[var].mean(), ' +/- ', biva[var].sem())
+
+    print('number saline')
+    print(len(saline))
+    print(saline[var].mean(), ' +/- ', saline[var].sem())
+
+    res = stats.mannwhitneyu(biva[var].values, saline[var].values)
+    print(res)
 
 #res = stats.ttest_ind(dfs_t['n embolysis events'].values, dfs_n['n embolysis events'].values)
 #print(res) # Ttest_indResult(statistic=-4.19208767253414, pvalue=6.451443274843057e-05)
@@ -93,29 +166,29 @@ dfs_n = dfs[dfs['toroidal'] == False]
 #res = stats.ttest_ind(dfs_t['density'].values, dfs_n['density'].values)
 #print(res) # Ttest_indResult(statistic=2.7485808330735098, pvalue=0.007232097933203161)
 
-x = 'donutness mean'
-x = 'latency donutness'
-#x = 'donutness prominence'
-y = 'mean platelet count -C'
-y = 'n embolysis events'
-y = 'instability'
-y = 'nrtracks'
-y = 'dvy - C'
-y = 'initial decelleration'
-y = 'latency max count'
+#x = 'donutness mean'
+#x = 'latency donutness'
+##x = 'donutness prominence'
+#y = 'mean platelet count -C'
+#y = 'n embolysis events'
+#y = 'instability'
+#y = 'nrtracks'
+#y = 'dvy - C'
+#y = 'initial decelleration'
+#y = 'latency max count'
 
 #dfs = dfs[dfs['treatment'] == 'control']
 
-dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (SQ)']
-dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (MIPS)']
-dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (salgav)']
+#dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (SQ)']
+#dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (MIPS)']
+#dfs_t = dfs_t[dfs_t['treatment'] != 'DMSO (salgav)']
 #plot_scatter(dfs_t, x, y, hue='treatment')
 #res = stats.linregress(dfs_t[x].values, dfs_t[y].values)
 #print(res) 
 
 # latencys LinregressResult(slope=0.586687347662309, intercept=127.66883940684338, 
 # rvalue=0.45130062247365904, pvalue=0.01592844397672208, stderr=0.22750976426250624, intercept_stderr=29.96209204208317)
-plot_scatter_line(dfs_t, x, y, 127.66883940684338, 0.586687347662309, hue='treatment')
+#plot_scatter_line(dfs_t, x, y, 127.66883940684338, 0.586687347662309, hue='treatment')
 
 #dfs = dfs[dfs['treatment'] != 'saline']
 #plot_box_plots(dfs, 'toroidal', y)
