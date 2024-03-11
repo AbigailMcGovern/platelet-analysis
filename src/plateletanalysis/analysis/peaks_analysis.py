@@ -4,7 +4,10 @@ from scipy.signal import find_peaks
 from scipy import stats
 from collections import defaultdict
 from plateletanalysis.topology.donutness import summary_donutness
-from dtaidistance import dtw
+try:
+    from dtaidistance import dtw
+except:
+    pass
 from plateletanalysis.analysis.summary_measures import recruitment_phase, shedding_phase, \
     platelet_mean_of_var, p_recruited_gt60, p_recruited_lt15, p_gt60s, p_lt15s, \
         initial_platelet_velocity_change, var_for_first_3_frames
