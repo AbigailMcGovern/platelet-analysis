@@ -1,7 +1,8 @@
 try:
     from ripser import ripser
-except:
-    pass
+    ripser_available = True
+except ModuleNotFoundError:
+    ripser_available = False
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -154,6 +155,12 @@ def sample_persistent_homology_analysis(
         sample, 
         bootstrap_id
     ):
+    if not ripser_available:
+        raise RuntimeError(
+                'ripser must be installed for topology. Install with '
+                '`pip install ripser` or '
+                '`pip install "plateletanalysis[donut]"`.'
+                )
     X = data[[x_col, y_col]].values
     ph_data[sample_col].append(sample)
     ph_data['bootstrap_id'].append(bootstrap_id)
