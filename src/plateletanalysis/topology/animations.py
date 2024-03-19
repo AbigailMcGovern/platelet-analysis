@@ -1,7 +1,8 @@
 try:
     from ripser import ripser
-except:
-    pass
+    ripser_available = True
+except ModuleNotFoundError:
+    ripser_available = False
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -105,6 +106,12 @@ def persistance_diagrams_for_timepointz(
         path='200527_IVMTR73_Inj4_saline_exp3', 
         tps=(10, 28, 115, 190)
         ):
+    if not ripser_available:
+        raise RuntimeError(
+            'ripser must be installed for topology. Install with '
+            '`pip install ripser` or '
+            '`pip install "plateletanalysis[donut]"`.'
+        )
     plt.rcParams['svg.fonttype'] = 'none'
     df = df[df['path'] == path]
     df = df[df[col] > centile]
