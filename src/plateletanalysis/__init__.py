@@ -15,6 +15,8 @@ from .analysis.plots import abs_and_pcnt_timeplots, abs_and_pcnt_timeplots, \
     inside_and_outside_injury_barplots, regions_abs_and_pcnt_timeplots, \
         individual_exp_inside_outside_timeplots 
 
+__version__ = '0.0.4rc0'
+
 __all__ = [
     # ---------------------
     # Categorical variables
@@ -76,4 +78,4 @@ __all__ = [
     # --------
 
 
-]
+
